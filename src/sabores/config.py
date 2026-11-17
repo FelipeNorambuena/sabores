@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.rate_limiters import InMemoryRateLimiter
+from .observabilidad import LimitadorMedido
 
 load_dotenv()
 # Gemini 3 ignora la temperatura y lo avisa en cada llamada; el aviso no aporta a la demo
@@ -30,6 +30,8 @@ class Config:
     proveedor_embeddings: str = field(default_factory=lambda: _env("EMBEDDINGS_PROVEEDOR", _env("LLM_PROVEEDOR", "google")))
     data_dir: Path = field(default_factory=lambda: Path(_env("DATA_DIR", str(RAIZ / ".datos"))))
     carta: Path = RAIZ / "data" / "carta.json"
+    # Logs de observabilidad (un JSONL con un span por línea)
+    logs_dir: Path = field(default_factory=lambda: Path(_env("LOGS_DIR", str(RAIZ / "logs"))))
     # Límites contra bucles infinitos y costo de tokens (material 2.3.1: Max Iterations)
     max_iteraciones_paso: int = 4
     max_replanificaciones: int = 2
@@ -40,13 +42,13 @@ class Config:
     llamadas_por_minuto: float = field(default_factory=lambda: float(_env("LLM_LLAMADAS_POR_MINUTO", "8")))
 
 
-_limitadores: dict[float, InMemoryRateLimiter] = {}
+_limitadores: dict[float, LimitadorMedido] = {}
 
 
 def limitador(cfg: Config) -> InMemoryRateLimiter:
     """Un único limitador compartido por todos los modelos: espacia las llamadas en vez de fallar con 429."""
     if cfg.llamadas_por_minuto not in _limitadores:
-        _limitadores[cfg.llamadas_por_minuto] = InMemoryRateLimiter(
+        _limitadores[cfg.llamadas_por_minuto] = LimitadorMedido(
             requests_per_second=cfg.llamadas_por_minuto / 60, check_every_n_seconds=0.5, max_bucket_size=1)
     return _limitadores[cfg.llamadas_por_minuto]
 

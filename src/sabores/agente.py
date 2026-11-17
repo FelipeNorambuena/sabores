@@ -11,11 +11,12 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from .config import Config, crear_embeddings, crear_llm
+from .config import Config, crear_embeddings, crear_llm, limitador
 from .datos import BaseDatos
 from .ejecutor import Ejecutor, ResultadoPaso, texto_de
 from .herramientas import crear_herramientas
 from .memoria import MemoriaCortoPlazo, MemoriaLargoPlazo
+from .observabilidad import Trazador
 from .planificador import Paso, Planificador
 
 # Prompt de sistema de la EP1, extendido con el uso de herramientas
@@ -46,7 +47,8 @@ Resultados de la ejecución:
 
 class AgenteSabores:
     def __init__(self, cfg: Config, cliente: str, sesion: str, db: BaseDatos, memoria: MemoriaLargoPlazo,
-                 llm_planificador, llm_ejecutor, ruta_traza: Path | None = None):
+                 llm_planificador, llm_ejecutor, ruta_traza: Path | None = None,
+                 trazador: Trazador | None = None):
         self.cfg, self.cliente, self.db, self.memoria = cfg, cliente, db, memoria
         self.llm = llm_planificador
         self.corto = MemoriaCortoPlazo(db.con, sesion, cfg.ventana_turnos, llm_resumen=llm_planificador)
@@ -55,11 +57,15 @@ class AgenteSabores:
         self.planificador = Planificador(llm_planificador, [h.name for h in herramientas])
         self.ruta_traza = ruta_traza
         self.traza: list[dict] = []
+        # Observabilidad: el callback registra cada llamada al LLM y a herramientas como un span
+        self.trazador = trazador or Trazador(sesion=sesion, cliente=cliente)
+        self.trazador.instrumentar(llm_planificador, llm_ejecutor, *herramientas)
 
     # --- contexto: memoria de largo plazo + resumen de corto plazo ---
     def contexto(self, mensaje: str) -> str:
         perfil = self.db.perfil(self.cliente)
-        recuerdos = self.memoria.recuperar(mensaje, self.cliente, k=3)
+        with self.trazador.span("recuperacion", "memoria_largo_plazo"):
+            recuerdos = self.memoria.recuperar(mensaje, self.cliente, k=3)
         lineas = [
             f"Perfil alimentario guardado: alérgenos={perfil['alergenos'] or 'ninguno'}, "
             f"dietas={perfil['dietas'] or 'ninguna'}, alergia_severa={perfil['alergia_severa']}",
@@ -71,9 +77,22 @@ class AgenteSabores:
 
     def _registrar(self, evento: str, **datos) -> None:
         self.traza.append({"evento": evento, **datos})
+        if evento in ("modo", "plan", "replanificacion", "fin_por_derivacion", "derivacion_por_limite"):
+            resumen = {"modo": datos.get("modo"), "n_pasos": len(datos.get("pasos", datos.get("nuevos_pasos", [])) or []),
+                       "condicion": str(datos.get("condicion", ""))[:200]}
+            self.trazador.evento(evento, **{k: v for k, v in resumen.items() if v not in (None, "", 0)})
 
     # --- ciclo principal ---
     def responder(self, mensaje: str) -> str:
+        with self.trazador.turno(mensaje) as turno:
+            respuesta = self._responder(mensaje)
+            eventos = [e["evento"] for e in self.traza]
+            turno.attrs.update(modo=next((e["modo"] for e in self.traza if e["evento"] == "modo"), None),
+                               derivado=any(e.startswith(("fin_por", "derivacion_por")) for e in eventos),
+                               largo_respuesta=len(respuesta))
+            return respuesta
+
+    def _responder(self, mensaje: str) -> str:
         self.traza = []
         contexto = self.contexto(mensaje)
         self._registrar("contexto", contexto=contexto)
@@ -83,8 +102,9 @@ class AgenteSabores:
         decision = self.planificador.decidir_modo(mensaje)
         self._registrar("modo", **decision)
         if decision["modo"] == "directo":
-            res = self.ejecutor.ejecutar(sistema, [*historial, HumanMessage(mensaje)])
-            completados = [self._resultado(Paso(id=0, descripcion=mensaje), res)]
+            paso0 = Paso(id=0, descripcion=mensaje)
+            res = self._ejecutar_paso(paso0, sistema, [*historial, HumanMessage(mensaje)])
+            completados = [self._resultado(paso0, res)]
         else:
             completados = self._ejecutar_plan(mensaje, sistema, contexto, historial)
 
@@ -109,7 +129,7 @@ class AgenteSabores:
                            f"Ejecuta SOLO este paso del plan: {paso.descripcion}"
                            + (f" (herramienta sugerida: {paso.herramienta})" if paso.herramienta else "")
                            + f"\nResultados de pasos anteriores:\n{previos}")
-            res = self.ejecutor.ejecutar(sistema, [*historial, HumanMessage(instruccion)])
+            res = self._ejecutar_paso(paso, sistema, [*historial, HumanMessage(instruccion)])
             completados.append(self._resultado(paso, res))
             condicion = res.condicion()
             if condicion is None:
@@ -130,6 +150,15 @@ class AgenteSabores:
             self._registrar("replanificacion", numero=replanificaciones, condicion=condicion,
                             nuevos_pasos=[p.model_dump() for p in pendientes])
         return completados
+
+    def _ejecutar_paso(self, paso: Paso, sistema: str, mensajes) -> ResultadoPaso:
+        with self.trazador.span("paso", f"paso_{paso.id}", descripcion=paso.descripcion[:120],
+                                herramienta_sugerida=paso.herramienta) as sp:
+            res = self.ejecutor.ejecutar(sistema, mensajes)
+            sp.attrs["n_llamadas"] = len(res.llamadas)
+            if res.condicion():
+                sp.attrs["estado_span"] = "alerta"
+            return res
 
     def _resultado(self, paso: Paso, res: ResultadoPaso) -> dict:
         datos = {"paso": paso.model_dump(), "salida": res.salida, "observaciones": res.observaciones}
@@ -156,5 +185,8 @@ def construir_agente(cliente: str, sesion: str | None = None, cfg: Config | None
     db = BaseDatos(cfg.data_dir / "sabores.db" if persistir else ":memory:", carta=cfg.carta)
     memoria = MemoriaLargoPlazo(embeddings, cfg.data_dir / "faiss" if persistir else None)
     memoria.indexar_carta(db.platos())
-    return AgenteSabores(cfg, cliente, sesion or cliente, db, memoria, llm_planificador, llm_ejecutor,
-                         ruta_traza=cfg.data_dir / "traza.jsonl" if persistir else None)
+    sesion = sesion or cliente
+    trazador = Trazador(ruta=cfg.logs_dir / "trazas.jsonl" if persistir else None, sesion=sesion, cliente=cliente,
+                        limitador=limitador(cfg))
+    return AgenteSabores(cfg, cliente, sesion, db, memoria, llm_planificador, llm_ejecutor,
+                         ruta_traza=cfg.data_dir / "traza.jsonl" if persistir else None, trazador=trazador)
