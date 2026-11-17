@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 .datos/
 .datos_prueba/
+docs/diagramas.html
