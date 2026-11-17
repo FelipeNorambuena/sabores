@@ -97,6 +97,7 @@ class Trazador:
         self.limitador = limitador
         self.registrar_contenido = registrar_contenido
         self.eventos: list[dict] = []
+        self.etiquetas: dict = {}  # p. ej. corrida y escenario: se agregan a cada span para poder agrupar
         self.trace_id: str | None = None
         self._pila: list[Span] = []
         self._abiertos: dict = {}  # run_id de LangChain -> (Span, espera al abrir)
@@ -111,7 +112,7 @@ class Trazador:
                     datetime.now().isoformat(timespec="milliseconds"), dict(attrs))
 
     def _cerrar(self, span: Span, estado: str = "ok", error: str | None = None) -> dict:
-        ev = {"session_id": self.sesion, "trace_id": self.trace_id, "span_id": span.span_id,
+        ev = {**self.etiquetas, "session_id": self.sesion, "trace_id": self.trace_id, "span_id": span.span_id,
               "parent_span_id": span.parent_id, "cliente": self.cliente, "tipo": span.tipo, "nombre": span.nombre,
               "inicio": span.inicio, "duracion_s": round(time.perf_counter() - span.t0, 4), "estado": estado,
               "error": enmascarar(error) if error else None, "atributos": span.attrs}
