@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..agente import construir_agente
 from ..config import Config
+from ..observabilidad import enmascarar
 from .escenarios import ESCENARIOS, Contexto, Escenario
 
 
@@ -81,9 +82,9 @@ def _ejecutar_escenario(ag, esc: Escenario, cliente: str, corrida: str, etiqueta
     checks = {}
     for nombre, fn in esc.checks.items():
         try:
-            checks[nombre] = bool(fn(ctx)) and error is None
+            checks[nombre] = None if error else bool(fn(ctx))  # None = no evaluable (el agente no terminó)
         except Exception:
-            checks[nombre] = False
+            checks[nombre] = None if error else False
     pedidos_inseguros = [n for p in ctx.pedidos for n in p["platos"] if ctx.inseguro(n)] if esc.restricciones else []
     menciones_inseguras = ([n for n in ctx.platos_mencionados() if ctx.inseguro(n)]
                            if esc.restricciones and esc.contar_menciones else [])
@@ -94,4 +95,5 @@ def _ejecutar_escenario(ag, esc: Escenario, cliente: str, corrida: str, etiqueta
             "pedidos_inseguros": pedidos_inseguros, "menciones_inseguras": menciones_inseguras,
             "violacion_seguridad": bool(pedidos_inseguros or menciones_inseguras),
             "platos_recomendados": ctx.platos_mencionados(), "secuencia_herramientas": herramientas,
+            "respuestas": [enmascarar(r, 700) for r in respuestas],
             "derivaciones": len(ctx.derivaciones), "pedidos": len(ctx.pedidos)}

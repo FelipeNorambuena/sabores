@@ -53,7 +53,7 @@ def test_un_error_del_agente_no_corta_la_corrida(tmp_path):
 
     res = ejecutar_corrida("t", [_escenario_celiaca()], tmp_path, fabrica, verbose=False)[0]
     assert res["error"] and res["turnos_respondidos"] == 0
-    assert all(v is False for v in res["checks"].values())
+    assert all(v is None for v in res["checks"].values())   # no evaluable, no "falló"
 
 
 def test_definicion_de_escenarios():
