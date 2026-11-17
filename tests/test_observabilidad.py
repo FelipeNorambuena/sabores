@@ -82,3 +82,25 @@ def test_limitador_mide_la_espera():
     for _ in range(3):
         lim.acquire()
     assert lim.espera_total_s > 0.05
+
+
+def test_reintentos_http_quedan_en_el_span_del_llm():
+    import httpx
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, LLMResult
+    from sabores.observabilidad import Trazador
+    from sabores.observabilidad.trazador import hook_respuesta_http
+
+    t = Trazador()
+    with t.turno("hola"):
+        t.callback.on_chat_model_start({}, [[None]], run_id="r1", invocation_params={"model": "m"})
+        hook_respuesta_http(httpx.Response(429, headers={"retry-after": "7"},
+                                           text="Rate limit reached for tokens per minute (TPM)"))
+        hook_respuesta_http(httpx.Response(200))
+        t.callback.on_llm_end(LLMResult(generations=[[ChatGeneration(message=AIMessage(content="ok"))]]),
+                              run_id="r1")
+    llm = next(e for e in t.eventos if e["tipo"] == "llm")["atributos"]
+    turno = next(e for e in t.eventos if e["tipo"] == "turno")["atributos"]
+    assert llm["intentos_http"] == 2 and llm["reintentos"] == 1
+    assert llm["errores_http"][0]["status"] == 429 and "TPM" in llm["errores_http"][0]["detalle"]
+    assert turno["n_reintentos"] == 1

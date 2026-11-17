@@ -41,6 +41,30 @@ def enmascarar(texto, maximo: int = 400) -> str:
     return texto if len(texto) <= maximo else texto[:maximo] + "…"
 
 
+# Intentos HTTP de la llamada al LLM en curso. El cliente de OpenAI reintenta por dentro (429, 5xx) y los
+# callbacks de LangChain no lo ven: este hook de httpx registra cada intento y el span lo recoge al cerrarse.
+INTENTOS_HTTP: list[dict] = []
+
+
+def hook_respuesta_http(respuesta) -> None:
+    intento = {"status": respuesta.status_code, "retry_after_s": respuesta.headers.get("retry-after"),
+               "tokens_restantes": respuesta.headers.get("x-ratelimit-remaining-tokens")}
+    if respuesta.status_code >= 400:
+        try:
+            respuesta.read()
+            intento["detalle"] = enmascarar(respuesta.text, 220)
+        except Exception:  # el cuerpo no es imprescindible para registrar el intento
+            pass
+    INTENTOS_HTTP.append(intento)
+
+
+def crear_cliente_http():
+    """Cliente httpx que alimenta INTENTOS_HTTP (se pasa a ChatOpenAI como http_client)."""
+    import httpx
+
+    return httpx.Client(event_hooks={"response": [hook_respuesta_http]}, timeout=120.0)
+
+
 class LimitadorMedido(InMemoryRateLimiter):
     """Limitador de llamadas que además mide cuánto tiempo hizo esperar: separa la espera de la latencia del modelo."""
 
@@ -104,7 +128,7 @@ class Trazador:
         """Raíz de la traza: un turno completo. Acumula tokens, llamadas y alertas de todos sus spans."""
         self.trace_id = uuid.uuid4().hex[:16]
         self._acum = {"n_llm": 0, "n_herramientas": 0, "n_alertas": 0, "tokens_entrada": 0, "tokens_salida": 0,
-                      "tokens_razonamiento": 0, "espera_limitador_s": 0.0, "n_eventos_replanificacion": 0}
+                      "tokens_razonamiento": 0, "espera_limitador_s": 0.0, "n_eventos_replanificacion": 0, "n_reintentos": 0}
         span = self._abrir("turno", "turno", mensaje=self._texto(mensaje))
         self._pila.append(span)
         try:
@@ -165,6 +189,7 @@ class ManejadorCallbacks(BaseCallbackHandler):
         modelo = (kwargs.get("invocation_params") or {}).get("model") or (kwargs.get("invocation_params") or {}).get(
             "model_name") or "desconocido"
         span = self.t._abrir("llm", "llm", modelo=modelo, mensajes_entrada=sum(len(m) for m in messages))
+        INTENTOS_HTTP.clear()
         self.t._abiertos[run_id] = (span, self.t._espera_actual())
 
     def on_llm_end(self, response, *, run_id, **kwargs):
@@ -182,6 +207,7 @@ class ManejadorCallbacks(BaseCallbackHandler):
         span.attrs.update(tokens_entrada=uso.get("input_tokens", 0), tokens_salida=uso.get("output_tokens", 0),
                           tokens_razonamiento=detalle.get("reasoning", 0), espera_limitador_s=espera,
                           latencia_modelo_s=round(max(total - espera, 0), 4))
+        self._anotar_intentos(span)
         a = self.t._acum
         a["n_llm"] = a.get("n_llm", 0) + 1
         a["tokens_entrada"] = a.get("tokens_entrada", 0) + span.attrs["tokens_entrada"]
@@ -195,10 +221,25 @@ class ManejadorCallbacks(BaseCallbackHandler):
         if span is None:
             return
         span.attrs["espera_limitador_s"] = round(self.t._espera_actual() - espera0, 4)
+        self._anotar_intentos(span)
         a = self.t._acum
         a["n_llm"] = a.get("n_llm", 0) + 1
         a["n_alertas"] = a.get("n_alertas", 0) + 1
         self.t._cerrar(span, "error", f"{type(error).__name__}: {error}")
+
+    def _anotar_intentos(self, span: Span) -> None:
+        """Copia al span los intentos HTTP: cuántos hubo y cuáles fallaron (típicamente 429 por tokens/minuto)."""
+        intentos = list(INTENTOS_HTTP)
+        INTENTOS_HTTP.clear()
+        if not intentos:
+            return
+        reintentos = [i for i in intentos if i["status"] >= 400]
+        span.attrs["intentos_http"] = len(intentos)
+        span.attrs["reintentos"] = len(reintentos)
+        if reintentos:
+            span.attrs["errores_http"] = reintentos
+            a = self.t._acum
+            a["n_reintentos"] = a.get("n_reintentos", 0) + len(reintentos)
 
     # Herramientas ------------------------------------------------------
     def on_tool_start(self, serialized, input_str, *, run_id, inputs=None, **kwargs):

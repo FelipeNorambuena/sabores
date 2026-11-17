@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from .observabilidad import LimitadorMedido
+from .observabilidad.trazador import crear_cliente_http
 
 load_dotenv()
 # Gemini 3 ignora la temperatura y lo avisa en cada llamada; el aviso no aporta a la demo
@@ -62,7 +63,8 @@ def crear_llm(modelo: str, cfg: Config, temperatura: float = 0.1):
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(model=modelo, temperature=temperatura, api_key=os.getenv("LLM_API_KEY"),
-                      base_url=os.getenv("LLM_BASE_URL"), rate_limiter=limitador(cfg), max_retries=6)
+                      base_url=os.getenv("LLM_BASE_URL"), rate_limiter=limitador(cfg), max_retries=6,
+                      http_client=crear_cliente_http())
 
 
 def crear_embeddings(cfg: Config):
