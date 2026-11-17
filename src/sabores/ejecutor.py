@@ -46,13 +46,24 @@ class Ejecutor:
             h.handle_tool_error = lambda e: f"ERROR: {e}"
             h.handle_validation_error = lambda e: f"ERROR: argumentos inválidos: {e}"
         self.nombres = {h.name for h in herramientas}
-        agente = create_tool_calling_agent(llm, herramientas, PROMPT_AGENTE)
-        self.executor = AgentExecutor(agent=agente, tools=herramientas, max_iterations=max_iteraciones,
-                                      return_intermediate_steps=True, handle_parsing_errors=True)
+        self.llm, self.herramientas, self.max_iteraciones = llm, herramientas, max_iteraciones
+        self._executors: dict[frozenset, AgentExecutor] = {}
+        self.executor = self._construir(None)
 
-    def ejecutar(self, sistema: str, mensajes: list[BaseMessage]) -> ResultadoPaso:
+    def _construir(self, nombres: frozenset | None) -> AgentExecutor:
+        """Executor con todas las herramientas o con un subconjunto (menos esquemas = menos tokens por llamada)."""
+        if nombres not in self._executors:
+            tools = [h for h in self.herramientas if nombres is None or h.name in nombres]
+            agente = create_tool_calling_agent(self.llm, tools, PROMPT_AGENTE)
+            self._executors[nombres] = AgentExecutor(agent=agente, tools=tools, max_iterations=self.max_iteraciones,
+                                                     return_intermediate_steps=True, handle_parsing_errors=True)
+        return self._executors[nombres]
+
+    def ejecutar(self, sistema: str, mensajes: list[BaseMessage], solo: set[str] | None = None) -> ResultadoPaso:
+        """`solo` restringe las herramientas visibles para el modelo en este paso (perfil optimizado)."""
         *historial, entrada = mensajes
-        respuesta = self.executor.invoke({"sistema": sistema, "chat_history": historial,
+        executor = self._construir(frozenset(solo) & frozenset(self.nombres) if solo else None)
+        respuesta = executor.invoke({"sistema": sistema, "chat_history": historial,
                                           "input": entrada.content})
         resultado = ResultadoPaso(salida=texto_de(respuesta["output"]))
         for accion, observacion in respuesta["intermediate_steps"]:

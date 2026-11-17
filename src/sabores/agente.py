@@ -45,6 +45,19 @@ Resultados de la ejecución:
 {resultados}"""
 
 
+# Reglas extra del perfil optimizado: el baseline sustituía un plato agotado sin avisar y creaba un pedido no pedido
+REGLA_SUSTITUCION = """
+6. Nunca registres un pedido de un plato distinto al que el cliente pidió expresamente. Si el plato pedido está
+   agotado o fue rechazado, díselo con claridad y propone alternativas; el cliente decide."""
+
+REGLA_RESPUESTA = """
+Si algún resultado indica AGOTADO o RECHAZADO, dilo explícitamente (qué plato y por qué) y ofrece alternativas
+antes de pedir confirmación. Nunca presentes como pedido un plato que el cliente no pidió."""
+
+# Herramientas de solo lectura: repetirlas en el mismo turno, sin cambios de condición, no aporta información
+HERRAMIENTAS_LECTURA = {"buscar_platos", "filtrar_platos_seguros", "consultar_disponibilidad", "consultar_plato"}
+
+
 class AgenteSabores:
     def __init__(self, cfg: Config, cliente: str, sesion: str, db: BaseDatos, memoria: MemoriaLargoPlazo,
                  llm_planificador, llm_ejecutor, ruta_traza: Path | None = None,
@@ -54,7 +67,7 @@ class AgenteSabores:
         self.corto = MemoriaCortoPlazo(db.con, sesion, cfg.ventana_turnos, llm_resumen=llm_planificador)
         herramientas = crear_herramientas(db, memoria, cliente, k=cfg.k_recuperacion)
         self.ejecutor = Ejecutor(llm_ejecutor, herramientas, cfg.max_iteraciones_paso)
-        self.planificador = Planificador(llm_planificador, [h.name for h in herramientas])
+        self.planificador = Planificador(llm_planificador, [h.name for h in herramientas], optimizado=cfg.optimizado)
         self.ruta_traza = ruta_traza
         self.traza: list[dict] = []
         # Observabilidad: el callback registra cada llamada al LLM y a herramientas como un span
@@ -96,7 +109,7 @@ class AgenteSabores:
         self.traza = []
         contexto = self.contexto(mensaje)
         self._registrar("contexto", contexto=contexto)
-        sistema = PROMPT_SISTEMA.format(contexto=contexto)
+        sistema = PROMPT_SISTEMA.format(contexto=contexto) + (REGLA_SUSTITUCION if self.cfg.optimizado else "")
         historial = self.corto.mensajes()
 
         decision = self.planificador.decidir_modo(mensaje)
@@ -110,8 +123,9 @@ class AgenteSabores:
 
         resultados = "\n".join(f"- Paso {c['paso']['id']} ({c['paso']['descripcion']}): {c['salida']} "
                                f"| observaciones: {c['observaciones']}" for c in completados)
+        prompt_respuesta = PROMPT_RESPUESTA.format(mensaje=mensaje, resultados=resultados)
         respuesta = texto_de(self.llm.invoke([SystemMessage(sistema), *historial, HumanMessage(
-            PROMPT_RESPUESTA.format(mensaje=mensaje, resultados=resultados))]).content)
+            prompt_respuesta + (REGLA_RESPUESTA if self.cfg.optimizado else ""))]).content)
         self.corto.guardar_turno(mensaje, respuesta)
         self._registrar("respuesta", texto=respuesta)
         self._guardar_traza(mensaje)
@@ -121,8 +135,14 @@ class AgenteSabores:
         plan = self.planificador.crear_plan(mensaje, contexto)
         self._registrar("plan", objetivo=plan.objetivo, pasos=[p.model_dump() for p in plan.pasos])
         pendientes, completados, replanificaciones = list(plan.pasos), [], 0
+        consultadas: set[str] = set()   # herramientas de lectura ya usadas desde la última condición nueva
         while pendientes:
             paso = pendientes.pop(0)
+            if self.cfg.optimizado and paso.herramienta in HERRAMIENTAS_LECTURA and paso.herramienta in consultadas:
+                self._registrar("paso_omitido", paso=paso.id, herramienta=paso.herramienta)
+                completados.append({"paso": paso.model_dump(), "salida": "Omitido: ya se consultó en este turno.",
+                                    "observaciones": []})
+                continue
             previos = "\n".join(f"- {c['paso']['descripcion']}: {c['salida']} {c['observaciones']}"
                                 for c in completados) or "(ninguno)"
             instruccion = (f"Solicitud original del cliente: {mensaje}\n"
@@ -131,6 +151,7 @@ class AgenteSabores:
                            + f"\nResultados de pasos anteriores:\n{previos}")
             res = self._ejecutar_paso(paso, sistema, [*historial, HumanMessage(instruccion)])
             completados.append(self._resultado(paso, res))
+            consultadas |= {ll["herramienta"] for ll in res.llamadas if ll["herramienta"] in HERRAMIENTAS_LECTURA}
             condicion = res.condicion()
             if condicion is None:
                 continue
@@ -146,6 +167,7 @@ class AgenteSabores:
                 self._registrar("derivacion_por_limite", condicion=condicion, caso=caso)
                 break
             replanificaciones += 1
+            consultadas.clear()   # la condición nueva (p. ej. plato agotado) exige volver a consultar
             pendientes = self.planificador.replanificar(plan.objetivo, completados, pendientes, condicion)
             self._registrar("replanificacion", numero=replanificaciones, condicion=condicion,
                             nuevos_pasos=[p.model_dump() for p in pendientes])
@@ -154,7 +176,9 @@ class AgenteSabores:
     def _ejecutar_paso(self, paso: Paso, sistema: str, mensajes) -> ResultadoPaso:
         with self.trazador.span("paso", f"paso_{paso.id}", descripcion=paso.descripcion[:120],
                                 herramienta_sugerida=paso.herramienta) as sp:
-            res = self.ejecutor.ejecutar(sistema, mensajes)
+            # Perfil optimizado: el modelo solo ve la herramienta del paso (+ derivar): ~1.000 tokens menos por llamada
+            solo = ({paso.herramienta, "derivar_a_personal"} if self.cfg.optimizado and paso.herramienta else None)
+            res = self.ejecutor.ejecutar(sistema, mensajes, solo=solo)
             sp.attrs["n_llamadas"] = len(res.llamadas)
             if res.condicion():
                 sp.attrs["estado_span"] = "alerta"

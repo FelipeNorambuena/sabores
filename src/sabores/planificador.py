@@ -67,6 +67,20 @@ Si no hay alternativa segura, agrega un paso derivar_a_personal. Usa ids nuevos 
 Responde SOLO JSON con el mismo formato de plan: {{"objetivo": "...", "pasos": [...]}}"""
 
 
+PROMPT_PLAN_EXTRA_OPT = """
+
+Restricciones adicionales: máximo 4 pasos. Cada herramienta de consulta (buscar_platos, filtrar_platos_seguros,
+consultar_disponibilidad) se usa UNA sola vez salvo que cambie una condición. Agrega recordar_preferencia solo si
+el cliente declaró un gusto. Un paso por herramienta: el ejecutor solo verá la herramienta que indiques."""
+
+# El PROMPT_REPLAN original ordena reemplazar el plato agotado: el agente terminaba creando un pedido de un plato
+# que el cliente no pidió (hallazgo de la corrida baseline). Esta versión deja la decisión al cliente.
+PROMPT_REPLAN_OPT = PROMPT_REPLAN.replace(
+    "Reglas: si un plato está AGOTADO, reemplázalo por otro plato seguro y disponible.",
+    "Reglas: si un plato está AGOTADO, NO lo reemplaces ni uses crear_pedido con otro plato: agrega solo pasos de "
+    "consulta para buscar alternativas seguras y disponibles, y deja que el cliente decida.")
+
+
 def extraer_json(texto: str) -> dict:
     """Extrae el primer objeto JSON de la respuesta del LLM (tolera ```json ... ``` y texto alrededor)."""
     texto = texto_de(texto)
@@ -94,9 +108,10 @@ def ordenar_pasos(pasos: list[Paso]) -> list[Paso]:
 
 
 class Planificador:
-    def __init__(self, llm, nombres_herramientas: list[str]):
+    def __init__(self, llm, nombres_herramientas: list[str], optimizado: bool = False):
         self.llm = llm
         self.herramientas = nombres_herramientas
+        self.optimizado = optimizado
 
     def _invocar_plan(self, prompt: str, objetivo_defecto: str) -> Plan:
         texto = self.llm.invoke(prompt).content
@@ -120,14 +135,14 @@ class Planificador:
         return {"modo": "plan", "motivo": "respaldo: no se pudo clasificar"}
 
     def crear_plan(self, mensaje: str, contexto: str) -> Plan:
-        plan = self._invocar_plan(PROMPT_PLAN.format(herramientas=", ".join(self.herramientas),
-                                                     contexto=contexto, mensaje=mensaje), mensaje)
+        prompt = PROMPT_PLAN.format(herramientas=", ".join(self.herramientas), contexto=contexto, mensaje=mensaje)
+        plan = self._invocar_plan(prompt + (PROMPT_PLAN_EXTRA_OPT if self.optimizado else ""), mensaje)
         plan.pasos = ordenar_pasos(plan.pasos)
         return plan
 
     def replanificar(self, objetivo: str, completados: list[dict], pendientes: list[Paso], condicion: str) -> list[Paso]:
         max_id = max([c["paso"]["id"] for c in completados] + [p.id for p in pendientes] + [0])
-        prompt = PROMPT_REPLAN.format(
+        prompt = (PROMPT_REPLAN_OPT if self.optimizado else PROMPT_REPLAN).format(
             objetivo=objetivo, condicion=condicion, max_id=max_id,
             completados="\n".join(f"- {c['paso']['descripcion']} -> {c['salida'][:300]}" for c in completados),
             pendientes="\n".join(f"- {p.model_dump_json()}" for p in pendientes) or "(ninguno)")

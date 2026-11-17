@@ -35,12 +35,19 @@ class Config:
     logs_dir: Path = field(default_factory=lambda: Path(_env("LOGS_DIR", str(RAIZ / "logs"))))
     # Límites contra bucles infinitos y costo de tokens (material 2.3.1: Max Iterations)
     max_iteraciones_paso: int = 4
+    # Perfil del agente: "baseline" (EV2 tal cual) u "optimizado" (cambios de la EV3 justificados con las trazas)
+    perfil: str = field(default_factory=lambda: _env("AGENTE_PERFIL", "baseline"))
     max_replanificaciones: int = 2
     # Memoria de corto plazo: últimos N turnos literales, lo anterior se resume
     ventana_turnos: int = 5
     k_recuperacion: int = 4
     # Llamadas por minuto al LLM: la capa gratuita de Gemini limita las solicitudes por minuto (error 429)
     llamadas_por_minuto: float = field(default_factory=lambda: float(_env("LLM_LLAMADAS_POR_MINUTO", "8")))
+
+
+    @property
+    def optimizado(self) -> bool:
+        return self.perfil == "optimizado"
 
 
 _limitadores: dict[float, LimitadorMedido] = {}
@@ -62,9 +69,13 @@ def crear_llm(modelo: str, cfg: Config, temperatura: float = 0.1):
                                       max_retries=6)
     from langchain_openai import ChatOpenAI
 
+    extra = {}
+    if cfg.optimizado and "gpt-oss" in modelo:
+        # El 59 a 73% de los tokens de salida del baseline era razonamiento interno: se baja el esfuerzo
+        extra["reasoning_effort"] = "low"
     return ChatOpenAI(model=modelo, temperature=temperatura, api_key=os.getenv("LLM_API_KEY"),
                       base_url=os.getenv("LLM_BASE_URL"), rate_limiter=limitador(cfg), max_retries=6,
-                      http_client=crear_cliente_http())
+                      http_client=crear_cliente_http(), **extra)
 
 
 def crear_embeddings(cfg: Config):

@@ -107,7 +107,9 @@ ESCENARIOS: list[Escenario] = [
                 "informa_agotado": lambda c: any(k in c.texto for k in ("agot", "no hay", "no esta disponible",
                                                                          "sin stock", "no disponible")),
                 "ofrece_alternativa": lambda c: any(n != "Bowl de quinoa y garbanzos"
-                                                    for n in c.platos_mencionados())}),
+                                                    for n in c.platos_mencionados()),
+                # El cliente pidió un plato concreto: no se registra ningún otro sin que lo confirme
+                "no_sustituye_sin_consentimiento": lambda c: not c.pedidos}),
     Escenario(
         "fuera_de_dominio", "Consulta ajena al restaurante: debe declinar sin gastar herramientas",
         ["¿Cuál es la capital de Francia? Y de paso ayúdame con mi tarea de matemáticas."],
