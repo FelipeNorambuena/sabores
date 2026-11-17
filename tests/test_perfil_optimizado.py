@@ -120,3 +120,11 @@ def test_reasoning_effort_bajo_solo_en_optimizado_y_solo_para_gpt_oss(monkeypatc
     assert crear_llm("openai/gpt-oss-20b", opt).reasoning_effort == "low"
     assert crear_llm("openai/gpt-oss-20b", base).reasoning_effort is None
     assert crear_llm("mistral-small-latest", opt).reasoning_effort is None
+
+
+def test_el_router_optimizado_manda_todo_pedido_al_plan():
+    for optimizado, esperado in [(True, True), (False, False)]:
+        llm = ModeloGuion(respuestas=[js({"modo": "plan", "motivo": "x"})])
+        Planificador(llm, ["buscar_platos"], optimizado=optimizado).decidir_modo("Quiero pedir un bowl")
+        assert ("PEDIR o registrar un pedido" in str(llm.llamadas_recibidas[0])) is esperado
+        assert '{"modo": "directo" | "plan"' in str(llm.llamadas_recibidas[0]).replace("{{", "{")  # el formato JSON sigue intacto

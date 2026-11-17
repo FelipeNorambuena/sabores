@@ -67,6 +67,12 @@ Si no hay alternativa segura, agrega un paso derivar_a_personal. Usa ids nuevos 
 Responde SOLO JSON con el mismo formato de plan: {{"objetivo": "...", "pasos": [...]}}"""
 
 
+# El modo directo nunca replanifica: un pedido de un plato agotado terminaba sin alternativas. Todo pedido va por plan.
+PROMPT_ROUTER_OPT = PROMPT_ROUTER.replace(
+    "Responde SOLO JSON",
+    "Toda solicitud de PEDIR o registrar un pedido es siempre \"plan\": hay que verificar seguridad y stock y puede "
+    "aparecer una condición nueva.\nResponde SOLO JSON", 1)
+
 PROMPT_PLAN_EXTRA_OPT = """
 
 Restricciones adicionales: máximo 4 pasos. Cada herramienta de consulta (buscar_platos, filtrar_platos_seguros,
@@ -127,7 +133,8 @@ class Planificador:
 
     def decidir_modo(self, mensaje: str) -> dict:
         try:
-            decision = extraer_json(self.llm.invoke(PROMPT_ROUTER.format(mensaje=mensaje)).content)
+            prompt = (PROMPT_ROUTER_OPT if self.optimizado else PROMPT_ROUTER).format(mensaje=mensaje)
+            decision = extraer_json(self.llm.invoke(prompt).content)
             if decision.get("modo") in ("directo", "plan"):
                 return decision
         except ValueError:
