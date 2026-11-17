@@ -95,5 +95,6 @@ def _ejecutar_escenario(ag, esc: Escenario, cliente: str, corrida: str, etiqueta
             "pedidos_inseguros": pedidos_inseguros, "menciones_inseguras": menciones_inseguras,
             "violacion_seguridad": bool(pedidos_inseguros or menciones_inseguras),
             "platos_recomendados": ctx.platos_mencionados(), "secuencia_herramientas": herramientas,
+            "descripcion": esc.descripcion, "mensajes": esc.mensajes,
             "respuestas": [enmascarar(r, 700) for r in respuestas],
             "derivaciones": len(ctx.derivaciones), "pedidos": len(ctx.pedidos)}

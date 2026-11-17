@@ -80,8 +80,8 @@ cons, err = m.consistencia(res), m.frecuencia_errores(res, sp)
 lat, rec = m.latencia_turnos(sp), m.uso_recursos(sp)
 desg = m.desglose_tiempo(sp)
 
-tab_resumen, tab_lat, tab_cal, tab_err, tab_datos = st.tabs(
-    ["Resumen", "Latencia y recursos", "Calidad y consistencia", "Errores y trazas", "Datos (tabla)"])
+tab_resumen, tab_lat, tab_cal, tab_conv, tab_err, tab_datos = st.tabs(
+    ["Resumen", "Latencia y recursos", "Calidad y consistencia", "Conversaciones", "Errores y trazas", "Datos (tabla)"])
 
 # ------------------------------------------------------------------ resumen
 with tab_resumen:
@@ -266,6 +266,47 @@ with tab_err:
         cols = [c for c in ["tipo", "nombre", "duracion_s", "estado", "a_tokens_entrada", "a_tokens_salida",
                             "a_espera_limitador_s", "a_reintentos", "a_etiqueta", "a_resultado", "error"] if c in arbol]
         st.dataframe(arbol[cols], use_container_width=True, hide_index=True)
+
+# ------------------------------------------------------------------ conversaciones (evidencia de cada escenario)
+with tab_conv:
+    st.caption("Cada escenario tal como lo vivió el agente: lo que escribió el cliente, lo que respondió y el veredicto de los "
+               "checks. Las respuestas están enmascaradas (email, RUT, teléfono).")
+    from sabores.evaluacion.escenarios import ESCENARIOS  # noqa: E402  (solo para recuperar los mensajes de logs antiguos)
+    catalogo = {e.nombre: e for e in ESCENARIOS}
+    simbolo = {True: "✅", False: "❌", None: "⚪"}
+    expandir = st.checkbox("Expandir todas las conversaciones", value=False,
+                           help="Úsalo junto con el filtro de escenario de la barra lateral para capturar uno a la vez.")
+    for _, r in res.sort_values(["escenario", "repeticion"]).iterrows():
+        esc = catalogo.get(r["escenario"])
+        mensajes = r.get("mensajes") if isinstance(r.get("mensajes"), list) else (esc.mensajes if esc else [])
+        respuestas = r["respuestas"] if isinstance(r.get("respuestas"), list) else []
+        desc = r.get("descripcion") if isinstance(r.get("descripcion"), str) else (esc.descripcion if esc else "")
+        titulo = f"{r['escenario']} · repetición {r['repeticion'] + 1} · {r['duracion_s']:.0f} s"
+        with st.expander(titulo, expanded=expandir):
+            if desc:
+                st.markdown(f"**Qué se prueba:** {desc}")
+            sin_texto = not isinstance(r.get("respuestas"), list)   # corrida anterior a que se guardaran las respuestas
+            for i, msg in enumerate(mensajes):
+                with st.chat_message("user"):
+                    st.write(msg)
+                with st.chat_message("assistant"):
+                    if sin_texto:
+                        st.info("El texto de la respuesta no se registró en esta corrida (se ejecutó antes de que el runner "
+                                "guardara las respuestas). Vuelve a ejecutar el escenario para verlo.")
+                    elif i < len(respuestas):
+                        st.write(respuestas[i])
+                    else:
+                        st.warning("Sin respuesta: la ejecución terminó antes (error del proveedor).")
+            if isinstance(r["error"], str):
+                st.error(f"Error del proveedor: {r['error'][:160]}…")
+            checks_txt = " · ".join(f"{simbolo.get(v, '⚪')} {k}" for k, v in (r["checks"] or {}).items())
+            if r["tiene_restricciones"]:
+                checks_txt += " · " + ("❌ violó una restricción alimentaria" if r["violacion_seguridad"]
+                                       else "✅ sin violaciones de seguridad")
+            st.markdown("**Veredicto:** " + (checks_txt or "sin checks"))
+            herr = r["secuencia_herramientas"] if isinstance(r.get("secuencia_herramientas"), list) else []
+            st.caption(f"Herramientas usadas ({len(herr)}): " + (", ".join(herr) if herr else "ninguna")
+                       + f" · pedidos creados: {r['pedidos']} · derivaciones al personal: {r['derivaciones']}")
 
 # ------------------------------------------------------------------ tablas
 with tab_datos:
