@@ -1,0 +1,470 @@
+[
+  {
+    "id": "P01",
+    "nombre": "Bowl de quinoa y garbanzos",
+    "descripcion": "Quinoa, garbanzos asados, palta, tomate cherry, limón y aceite de oliva.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P02",
+    "nombre": "Curry verde de lentejas",
+    "descripcion": "Lentejas, leche de coco, espinaca, jengibre y arroz basmati.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P03",
+    "nombre": "Ensalada thai de maní",
+    "descripcion": "Repollo morado, zanahoria, cilantro, salsa de maní y maní tostado.",
+    "alergenos": [
+      "frutos_secos"
+    ],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P04",
+    "nombre": "Wrap de pollo y hummus",
+    "descripcion": "Tortilla de trigo, pollo grillado, hummus, lechuga y pepino.",
+    "alergenos": [
+      "gluten"
+    ],
+    "apto_para": [
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P05",
+    "nombre": "Risotto de champiñones",
+    "descripcion": "Arroz arborio, champiñones, caldo de verduras, mantequilla y parmesano.",
+    "alergenos": [
+      "lactosa"
+    ],
+    "apto_para": [
+      "vegetariano",
+      "sin_gluten",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P06",
+    "nombre": "Tacos de pescado",
+    "descripcion": "Tortilla de maíz, merluza, repollo, pico de gallo y crema de yogur.",
+    "alergenos": [
+      "pescado",
+      "lactosa"
+    ],
+    "apto_para": [
+      "sin_gluten",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [
+      "mariscos"
+    ],
+    "stock_diario": 20
+  },
+  {
+    "id": "P07",
+    "nombre": "Pad thai vegetariano",
+    "descripcion": "Fideos de arroz, tofu, huevo, brotes de soja y maní picado.",
+    "alergenos": [
+      "huevo",
+      "frutos_secos",
+      "soja"
+    ],
+    "apto_para": [
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P08",
+    "nombre": "Sopa de zapallo y jengibre",
+    "descripcion": "Zapallo, jengibre, leche de coco y semillas de zapallo tostadas.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [
+      "frutos_secos"
+    ],
+    "stock_diario": 20
+  },
+  {
+    "id": "P09",
+    "nombre": "Ensalada mediterránea de garbanzos",
+    "descripcion": "Garbanzos, tomate, pepino, aceitunas, cebolla morada y perejil.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P10",
+    "nombre": "Pollo al limón con quinoa",
+    "descripcion": "Pechuga de pollo grillada, quinoa, espárragos, limón y aceite de oliva.",
+    "alergenos": [],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P11",
+    "nombre": "Bowl de tofu teriyaki",
+    "descripcion": "Tofu, arroz integral, zanahoria, brócoli y salsa teriyaki.",
+    "alergenos": [
+      "soja",
+      "gluten"
+    ],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P12",
+    "nombre": "Ensalada de pollo y palta",
+    "descripcion": "Pollo grillado, lechuga, palta, tomate cherry, pepino y vinagreta de limón.",
+    "alergenos": [],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P13",
+    "nombre": "Lasaña vegetariana",
+    "descripcion": "Pasta de trigo, berenjena, zapallo italiano, salsa de tomate, ricota y mozzarella.",
+    "alergenos": [
+      "gluten",
+      "lactosa"
+    ],
+    "apto_para": [
+      "vegetariano",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P14",
+    "nombre": "Buddha bowl de falafel",
+    "descripcion": "Falafel de garbanzos, quinoa, hummus, pepino, tomate y hojas verdes.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [
+      "gluten"
+    ],
+    "stock_diario": 20
+  },
+  {
+    "id": "P15",
+    "nombre": "Salmón con verduras asadas",
+    "descripcion": "Salmón al horno, brócoli, zanahoria, zapallo italiano y papas asadas.",
+    "alergenos": [
+      "pescado"
+    ],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P16",
+    "nombre": "Hamburguesa de lentejas",
+    "descripcion": "Hamburguesa de lentejas, lechuga, tomate, cebolla y pan integral.",
+    "alergenos": [
+      "gluten"
+    ],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P17",
+    "nombre": "Ceviche de champiñones",
+    "descripcion": "Champiñones, cebolla morada, cilantro, limón, ají y camote.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P18",
+    "nombre": "Arroz salteado con verduras",
+    "descripcion": "Arroz integral, brócoli, zanahoria, pimentón, cebollín y salsa de soja.",
+    "alergenos": [
+      "soja",
+      "gluten"
+    ],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P19",
+    "nombre": "Pasta con pesto de albahaca",
+    "descripcion": "Pasta de trigo, albahaca fresca, aceite de oliva, parmesano y piñones.",
+    "alergenos": [
+      "gluten",
+      "lactosa",
+      "frutos_secos"
+    ],
+    "apto_para": [
+      "vegetariano",
+      "sin_lactosa"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P20",
+    "nombre": "Pollo al curry con arroz",
+    "descripcion": "Pollo, curry, leche de coco, zanahoria, espinaca y arroz basmati.",
+    "alergenos": [],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P21",
+    "nombre": "Ensalada de quinoa y salmón",
+    "descripcion": "Quinoa, salmón ahumado, espinaca, palta, pepino y limón.",
+    "alergenos": [
+      "pescado"
+    ],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P22",
+    "nombre": "Crema de zapallo",
+    "descripcion": "Zapallo, zanahoria, cebolla, jengibre, caldo de verduras y semillas de zapallo.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [
+      "frutos_secos"
+    ],
+    "stock_diario": 20
+  },
+  {
+    "id": "P23",
+    "nombre": "Bowl mexicano de porotos negros",
+    "descripcion": "Porotos negros, arroz integral, palta, tomate, choclo, cilantro y limón.",
+    "alergenos": [],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P24",
+    "nombre": "Quiche de espinaca",
+    "descripcion": "Masa de trigo, espinaca, huevo, crema y queso.",
+    "alergenos": [
+      "gluten",
+      "huevo",
+      "lactosa"
+    ],
+    "apto_para": [
+      "vegetariano",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P25",
+    "nombre": "Poke de atún",
+    "descripcion": "Atún, arroz, palta, pepino, zanahoria, edamame y semillas de sésamo.",
+    "alergenos": [
+      "pescado",
+      "soja",
+      "sésamo"
+    ],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P26",
+    "nombre": "Ensalada de tofu y verduras",
+    "descripcion": "Tofu grillado, lechuga, zanahoria, pepino, repollo morado y vinagreta de limón.",
+    "alergenos": [
+      "soja"
+    ],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P27",
+    "nombre": "Ñoquis de papa con salsa de tomate",
+    "descripcion": "Ñoquis de papa, salsa de tomate, albahaca fresca y queso parmesano.",
+    "alergenos": [
+      "gluten",
+      "lactosa"
+    ],
+    "apto_para": [
+      "vegetariano",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P28",
+    "nombre": "Pollo teriyaki con verduras",
+    "descripcion": "Pollo grillado, brócoli, zanahoria, arroz y salsa teriyaki.",
+    "alergenos": [
+      "soja",
+      "gluten"
+    ],
+    "apto_para": [
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  },
+  {
+    "id": "P29",
+    "nombre": "Bowl de batata y garbanzos",
+    "descripcion": "Batata asada, garbanzos, espinaca, palta, tomate cherry y tahini.",
+    "alergenos": [
+      "sésamo"
+    ],
+    "apto_para": [
+      "vegano",
+      "vegetariano",
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [
+      "frutos_secos"
+    ],
+    "stock_diario": 20
+  },
+  {
+    "id": "P30",
+    "nombre": "Merluza al horno con quinoa",
+    "descripcion": "Merluza al horno, quinoa, brócoli, zanahoria, limón y aceite de oliva.",
+    "alergenos": [
+      "pescado"
+    ],
+    "apto_para": [
+      "sin_gluten",
+      "sin_lactosa",
+      "sin_frutos_secos"
+    ],
+    "contaminacion_cruzada": [],
+    "stock_diario": 20
+  }
+]

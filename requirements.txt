@@ -1,0 +1,11 @@
+langchain-core
+langchain-classic
+langchain-community
+langchain-openai
+langchain-google-genai
+faiss-cpu
+python-dotenv
+pytest
+streamlit
+pandas
+plotly
