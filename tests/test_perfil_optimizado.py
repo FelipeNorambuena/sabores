@@ -128,3 +128,54 @@ def test_el_router_optimizado_manda_todo_pedido_al_plan():
         Planificador(llm, ["buscar_platos"], optimizado=optimizado).decidir_modo("Quiero pedir un bowl")
         assert ("PEDIR o registrar un pedido" in str(llm.llamadas_recibidas[0])) is esperado
         assert '{"modo": "directo" | "plan"' in str(llm.llamadas_recibidas[0]).replace("{{", "{")  # el formato JSON sigue intacto
+
+
+def _herramientas_con_busqueda(perfil_en_busqueda):
+    """Memoria simulada cuyo buscar_platos devuelve platos con y sin gluten, sin filtrar (como el RAG real)."""
+    import types
+
+    class Mem:
+        def buscar_platos(self, consulta, k=4):
+            nombres = ["Arroz salteado con verduras", "Ñoquis de papa con salsa de tomate", "Risotto de champiñones",
+                       "Bowl de quinoa y garbanzos", "Pad thai vegetariano", "Curry verde de lentejas"]
+            return [types.SimpleNamespace(metadata={"nombre": n}) for n in nombres][:k]
+
+        def recordar(self, *a, **k):
+            pass
+
+    db = BaseDatos(":memory:", carta=Config().carta)
+    db.guardar_perfil("ana", ["gluten"], ["vegetariano"], False)
+    herramientas = {h.name: h for h in crear_herramientas(db, Mem(), "ana", k=4, perfil_en_busqueda=perfil_en_busqueda)}
+    return herramientas["buscar_platos"]
+
+
+def test_el_baseline_devuelve_candidatos_sin_filtrar_el_perfil():
+    resultado = _herramientas_con_busqueda(False).invoke({"consulta": "sin gluten"})
+    assert "Arroz salteado con verduras" in resultado and "Ñoquis de papa" in resultado    # llevan gluten: el RAG no filtra
+
+
+def test_el_perfil_optimizado_excluye_en_la_busqueda_lo_que_el_perfil_prohibe():
+    import json
+
+    resultado = _herramientas_con_busqueda(True).invoke({"consulta": "sin gluten"})
+    datos = json.loads(resultado.split(": ", 1)[1])
+    assert "Arroz salteado con verduras" not in datos["candidatos"] and "Ñoquis de papa con salsa de tomate" not in datos["candidatos"]
+    assert {"Arroz salteado con verduras", "Ñoquis de papa con salsa de tomate"} <= set(datos["excluidos_por_perfil"])
+    assert len(datos["candidatos"]) == 4          # se buscó de más para poder reponer los descartados
+
+
+def test_sin_perfil_guardado_la_busqueda_optimizada_no_filtra(tmp_path):
+    import json
+    import types
+
+    class Mem:
+        def buscar_platos(self, consulta, k=4):
+            return [types.SimpleNamespace(metadata={"nombre": "Wrap de pollo y hummus"})]
+
+        def recordar(self, *a, **k):
+            pass
+
+    db = BaseDatos(":memory:", carta=Config().carta)          # cliente sin restricciones guardadas
+    buscar = {h.name: h for h in crear_herramientas(db, Mem(), "nuevo", perfil_en_busqueda=True)}["buscar_platos"]
+    datos = json.loads(buscar.invoke({"consulta": "algo rico"}).split(": ", 1)[1])
+    assert datos["candidatos"] == ["Wrap de pollo y hummus"] and "excluidos_por_perfil" not in datos

@@ -39,15 +39,31 @@ def es_seguro(plato: dict, alergenos: list[str], dietas: list[str], alergia_seve
     return True, "cumple las restricciones"
 
 
-def crear_herramientas(db: BaseDatos, memoria: MemoriaLargoPlazo, cliente: str, k: int = 4):
-    """Crea las herramientas ligadas a un cliente. El id del cliente lo fija el sistema, no el LLM."""
+def crear_herramientas(db: BaseDatos, memoria: MemoriaLargoPlazo, cliente: str, k: int = 4,
+                       perfil_en_busqueda: bool = False):
+    """Crea las herramientas ligadas a un cliente. El id del cliente lo fija el sistema, no el LLM.
+
+    perfil_en_busqueda (perfil optimizado): buscar_platos excluye por sí misma los platos incompatibles con el perfil
+    guardado del cliente. Antes la seguridad dependía de que el modelo encadenara buscar y luego filtrar; al mostrarle
+    solo la herramienta de cada paso esa cadena dejó de estar garantizada y se recomendaron platos con gluten.
+    """
 
     @tool
     def buscar_platos(consulta: str) -> str:
         """Búsqueda semántica en la carta (RAG). Úsala para encontrar platos por gusto o tipo de comida.
         OJO: no filtra alérgenos; después aplica filtrar_platos_seguros."""
-        docs = memoria.buscar_platos(consulta, k=k)
-        return _json("OK", candidatos=[d.metadata["nombre"] for d in docs])
+        perfil = db.perfil(cliente) if perfil_en_busqueda else None
+        filtrar = bool(perfil and (perfil["alergenos"] or perfil["dietas"]))
+        docs = memoria.buscar_platos(consulta, k=k * 4 if filtrar else k)   # se busca de más: algunos se descartarán
+        nombres = [d.metadata["nombre"] for d in docs]
+        if not filtrar:
+            return _json("OK", candidatos=nombres)
+        seguros, excluidos = [], []
+        for nombre in nombres:
+            plato = db.buscar_plato(nombre)
+            ok, _ = es_seguro(plato, perfil["alergenos"], perfil["dietas"], perfil["alergia_severa"]) if plato else (False, "")
+            (seguros if ok else excluidos).append(nombre)
+        return _json("OK", candidatos=seguros[:k], excluidos_por_perfil=excluidos)
 
     @tool
     def consultar_plato(nombre: str) -> str:

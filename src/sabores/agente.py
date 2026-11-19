@@ -65,7 +65,7 @@ class AgenteSabores:
         self.cfg, self.cliente, self.db, self.memoria = cfg, cliente, db, memoria
         self.llm = llm_planificador
         self.corto = MemoriaCortoPlazo(db.con, sesion, cfg.ventana_turnos, llm_resumen=llm_planificador)
-        herramientas = crear_herramientas(db, memoria, cliente, k=cfg.k_recuperacion)
+        herramientas = crear_herramientas(db, memoria, cliente, k=cfg.k_recuperacion, perfil_en_busqueda=cfg.optimizado)
         self.ejecutor = Ejecutor(llm_ejecutor, herramientas, cfg.max_iteraciones_paso)
         self.planificador = Planificador(llm_planificador, [h.name for h in herramientas], optimizado=cfg.optimizado)
         self.ruta_traza = ruta_traza
