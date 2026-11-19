@@ -7,7 +7,7 @@ cliente (alergias, dietas) y gestiona sus pedidos. La EV1 construyó el RAG, la 
 planificación, memoria y herramientas, y esta **EV3 le agrega observabilidad**: logs estructurados, trazas, métricas,
 un dashboard y un análisis de dónde falla y cómo mejorarlo.
 
-> **Qué se puede verificar en este repositorio:** el código del agente y de su instrumentación, 55 pruebas
+> **Qué se puede verificar en este repositorio:** el código del agente y de su instrumentación, 58 pruebas
 > automáticas, 8 escenarios de evaluación con su resultado esperado, los logs reales de las corridas, el dashboard y
 > las capturas de la ejecución (`evidencia/`).
 
@@ -42,8 +42,34 @@ Una corrida anterior con `gpt-oss-120b` (etiqueta `baseline`) agotó la cuota di
 10 ejecuciones terminaron con error 429 y quedaron como *no evaluables*, sin contar contra el agente. Se conserva como
 evidencia del problema de cuota.
 
-**Perfil optimizado:** implementado y probado (ver `docs/diseno.md`, diagrama 6), pero su corrida completa de comparación
-**está pendiente** por el límite diario de la API; los resultados de esta sección corresponden solo al baseline.
+### Perfil optimizado: tres versiones, el mismo modelo y los mismos escenarios
+
+El perfil optimizado (`AGENTE_PERFIL=optimizado`, ver `docs/diseno.md`, diagrama 6) se midió en dos versiones: **v1** es la
+primera optimización y **v2** agrega una corrección de seguridad que la v1 hizo necesaria.
+
+| Métrica | baseline-20b | optimizado v1 | optimizado v2 |
+|---|---|---|---|
+| Tokens por turno | 12.112 | 7.616 | 7.708 |
+| Latencia por turno p50 / p95 | 59 s / 172 s | 32 s / 119 s | **14 s / 107 s** |
+| Reintentos 429 por turno | 8,3 | 4,5 | 3,8 |
+| Cuota diaria consumida | 73% | 46% | 46% |
+| Precisión de seguridad | 100% | **83%** (1 violación en 6) | 100% |
+| Consistencia de platos / herramientas | 0,33 / 0,70 | 0,67 / 0,83 | 0,73 / 0,83 |
+| Checks cumplidos | 21 de 22 | 22 de 23 | **20 de 23** |
+
+**La optimización reduce el costo y el tiempo, pero no es gratuita:**
+
+- **v1 introdujo una regresión de seguridad.** En una repetición del caso base recomendó "Arroz salteado" y "Ñoquis"
+  (ambos con gluten) a una clienta celíaca. La causa: el plan filtró antes de buscar, `buscar_platos` no filtra alérgenos
+  y, al mostrarle al ejecutor solo la herramienta de cada paso, dejó de encadenarlas. La v2 hace que `buscar_platos`
+  aplique el perfil guardado del cliente, sin depender del orden del plan (3 pruebas nuevas).
+- **v2 tiene tres checks fallidos, dos de ellos preocupantes:** en `alergia_severa_pedido` el agente dijo que derivaba el
+  caso al personal pero **no registró ninguna derivación**, y en `plato_agotado` propuso un plato que **no existe en la
+  carta**. No tienen corrección todavía; están registrados como hallazgos y recomendaciones en el informe.
+- **Los checks no son del todo comparables:** `no_sustituye_sin_consentimiento` se agregó después de la corrida
+  `baseline-20b`, que lo habría incumplido (creó un pedido no solicitado).
+- Una corrida por versión, con 1 a 3 ejecuciones por escenario: las diferencias pequeñas pueden ser azar. La corrida
+  `optimizado-v1-20b` se conserva en los logs como evidencia de la regresión.
 
 ---
 
@@ -67,7 +93,7 @@ sabores/
 │       └── runner.py          ejecuta los escenarios y escribe los logs
 ├── dashboard/app.py           dashboard Streamlit
 ├── scripts/                   ejecutar_escenarios.py · render_diagramas.py
-├── tests/                     55 pruebas (pytest, sin claves ni red)
+├── tests/                     58 pruebas (pytest, sin claves ni red)
 ├── data/carta.json            carta de 30 platos
 ├── docs/                      diseno.md (bocetos) y diagramas/ (PNG y SVG)
 ├── evidencia/                 capturas del dashboard y salida de pytest
@@ -128,7 +154,7 @@ cp .env.example .env        # y completa LLM_API_KEY y GOOGLE_API_KEY
 pytest -q
 ```
 
-Debe terminar con `55 passed`. Usan modelos simulados con guion, así que son deterministas. La salida de referencia está
+Debe terminar con `58 passed`. Usan modelos simulados con guion, así que son deterministas. La salida de referencia está
 en `evidencia/12_pytest_resultado.txt`.
 
 ### 2. Escenarios de evaluación (usa las claves y consume cuota)
@@ -144,13 +170,13 @@ Para usar otro modelo o el perfil optimizado, se definen variables de entorno an
 # PowerShell
 $env:AGENTE_PERFIL = "optimizado"
 $env:LLM_MODELO_PLANIFICADOR = "openai/gpt-oss-20b"; $env:LLM_MODELO_EJECUTOR = "openai/gpt-oss-20b"
-python scripts/ejecutar_escenarios.py --etiqueta optimizado-20b
+python scripts/ejecutar_escenarios.py --etiqueta optimizado-v2-20b
 ```
 
 ```bash
 # bash
 AGENTE_PERFIL=optimizado LLM_MODELO_PLANIFICADOR=openai/gpt-oss-20b LLM_MODELO_EJECUTOR=openai/gpt-oss-20b \
-  python scripts/ejecutar_escenarios.py --etiqueta optimizado-20b
+  python scripts/ejecutar_escenarios.py --etiqueta optimizado-v2-20b
 ```
 
 Cada ejecución arranca con una base de datos y un índice FAISS propios, y **agrega** líneas a `logs/trazas.jsonl` y
