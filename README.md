@@ -13,6 +13,46 @@ un dashboard y un análisis de dónde falla y cómo mejorarlo.
 
 ---
 
+## Ver el dashboard (guía rápida, sin claves)
+
+No necesitas claves de API ni ejecutar el agente: el dashboard lee los logs que **ya están en el repositorio** (`logs/`).
+Necesitas **Python 3.11 o superior** (lo exigen las librerías; se probó con 3.14) y Git.
+
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/FelipeNorambuena/sabores.git
+cd sabores
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m streamlit run dashboard/app.py
+```
+
+**Linux o macOS**
+
+```bash
+git clone https://github.com/FelipeNorambuena/sabores.git
+cd sabores
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m streamlit run dashboard/app.py
+```
+
+Se abre solo en el navegador; si no, copia <http://localhost:8501>. La primera instalación tarda unos minutos. Para cerrarlo,
+`Ctrl+C` en la terminal.
+
+**Cómo leerlo**
+
+1. En la barra lateral, filtro **Corrida**: deja marcada **una sola a la vez**; si las dejas todas, las cifras salen mezcladas.
+   `baseline-20b` es la referencia, `optimizado-v1-20b` es la primera optimización (con una violación de seguridad) y
+   `optimizado-v2-20b` es la versión corregida. `baseline` es la corrida del modelo grande, afectada por la cuota diaria.
+2. Pestaña **Conversaciones**: marca "Expandir todas" para ver cada escenario como un chat con el veredicto de los checks.
+3. Pestaña **Errores y trazas**: elige un turno para ver, paso a paso, qué hizo el agente y cuánto tardó cada parte.
+
+¿No quieres instalar nada? Las capturas de estas mismas vistas están en la carpeta `evidencia/`.
+
+---
+
 ## Resultados de la corrida de referencia
 
 Corrida `baseline-20b`: los 8 escenarios (10 ejecuciones) con el modelo `gpt-oss-20b` de Groq, sin cambios en el agente.
