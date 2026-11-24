@@ -39,6 +39,8 @@ def ejecutar_corrida(etiqueta: str = "baseline", escenarios: list[Escenario] | N
     resultados: list[dict] = []
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as t:
         tmp = Path(t)
+        # El índice de la carta se calcula una sola vez; cada ejecución parte de una copia limpia
+        # (aislamiento entre escenarios y menos llamadas de embeddings).
         indice_base = _preparar_indice_base(tmp) if fabrica is None else None
         fabrica = fabrica or _fabrica_real
         for esc in escenarios:
@@ -48,6 +50,7 @@ def ejecutar_corrida(etiqueta: str = "baseline", escenarios: list[Escenario] | N
                     shutil.copytree(indice_base, data / "faiss")
                 cliente = f"{esc.nombre}_{rep}"
                 ag = fabrica(cliente, cliente, Config(data_dir=data, logs_dir=logs_dir))
+                # Etiquetas que se copian a cada span: permiten filtrar por corrida y escenario en el dashboard.
                 ag.trazador.etiquetas = {"corrida": corrida, "etiqueta": etiqueta, "escenario": esc.nombre,
                                          "repeticion": rep}
                 if esc.setup:
@@ -55,6 +58,7 @@ def ejecutar_corrida(etiqueta: str = "baseline", escenarios: list[Escenario] | N
                 res = _ejecutar_escenario(ag, esc, cliente, corrida, etiqueta, rep)
                 resultados.append(res)
                 ag.db.con.close()  # en Windows el directorio temporal no se borra con la base abierta
+                # Una línea por ejecución: es la fuente de las métricas de seguridad, checks y consistencia.
                 with (logs_dir / "resultados.jsonl").open("a", encoding="utf-8") as f:
                     f.write(json.dumps(res, ensure_ascii=False) + "\n")
                 if verbose:
@@ -78,6 +82,8 @@ def _ejecutar_escenario(ag, esc: Escenario, cliente: str, corrida: str, etiqueta
             eventos.append(ev["evento"])
             if ev["evento"] == "paso":
                 herramientas += [ll["herramienta"] for ll in ev["llamadas"]]
+    # Contexto de evaluación: respuestas, base de datos y herramientas usadas. Los checks y la seguridad se calculan
+    # sobre esto con reglas en código, no pidiéndole a un modelo que juzgue la respuesta.
     ctx = Contexto(respuestas, ag.db, cliente, esc.restricciones, herramientas, eventos)
     checks = {}
     for nombre, fn in esc.checks.items():
@@ -85,6 +91,7 @@ def _ejecutar_escenario(ag, esc: Escenario, cliente: str, corrida: str, etiqueta
             checks[nombre] = None if error else bool(fn(ctx))  # None = no evaluable (el agente no terminó)
         except Exception:
             checks[nombre] = None if error else False
+    # Violación de seguridad = pedido o plato mencionado que es_seguro() rechaza para las restricciones reales del escenario.
     pedidos_inseguros = [n for p in ctx.pedidos for n in p["platos"] if ctx.inseguro(n)] if esc.restricciones else []
     menciones_inseguras = ([n for n in ctx.platos_mencionados() if ctx.inseguro(n)]
                            if esc.restricciones and esc.contar_menciones else [])

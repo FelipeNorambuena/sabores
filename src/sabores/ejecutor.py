@@ -13,6 +13,7 @@ from langchain_classic.agents import AgentExecutor, create_tool_calling_agent  #
 from langchain_core.messages import BaseMessage  # noqa: E402
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder  # noqa: E402
 
+# Prefijos que las herramientas ponen a su resultado; el orquestador los lee para decidir si replanifica.
 ETIQUETAS_ALERTA = ("ERROR", "AGOTADO", "RECHAZADO", "DERIVADO")
 
 # Mismo prompt que el notebook 3-langchain-agent.ipynb: sistema, historial, entrada y scratchpad del agente.
@@ -61,17 +62,23 @@ class Ejecutor:
 
     def ejecutar(self, sistema: str, mensajes: list[BaseMessage], solo: set[str] | None = None) -> ResultadoPaso:
         """`solo` restringe las herramientas visibles para el modelo en este paso (perfil optimizado)."""
+        # El último mensaje es la instrucción del paso; el resto es el historial de la conversación.
         *historial, entrada = mensajes
+        # Los executors se cachean por subconjunto de herramientas: construirlos es caro y el perfil optimizado
+        # usa uno distinto por paso.
         executor = self._construir(frozenset(solo) & frozenset(self.nombres) if solo else None)
         respuesta = executor.invoke({"sistema": sistema, "chat_history": historial,
                                           "input": entrada.content})
         resultado = ResultadoPaso(salida=texto_de(respuesta["output"]))
+        # Cada (acción, observación) es una llamada a herramienta: se guarda para la traza y para detectar condiciones.
         for accion, observacion in respuesta["intermediate_steps"]:
             obs = str(observacion)
+            # Si el modelo inventa una herramienta, se registra como ERROR en vez de ejecutarla.
             if accion.tool not in self.nombres:
                 obs = f"ERROR: la herramienta {accion.tool} no existe."
             resultado.llamadas.append({"herramienta": accion.tool, "args": accion.tool_input, "resultado": obs})
             resultado.observaciones.append(obs)
+        # AgentExecutor devuelve este texto al llegar a max_iterations; se convierte en un ERROR que el orquestador entiende.
         if "iteration limit" in resultado.salida:
             resultado.salida = "Se alcanzó el máximo de iteraciones del paso."
             resultado.observaciones.append("ERROR: máximo de iteraciones alcanzado.")

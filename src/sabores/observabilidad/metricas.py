@@ -24,6 +24,7 @@ def _leer_jsonl(ruta: Path) -> list[dict]:
 def cargar(logs_dir: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Devuelve (spans, resultados). Los atributos de cada span se aplanan a columnas `a_*`."""
     logs_dir = Path(logs_dir)
+    # Cada línea de trazas.jsonl es un span; los atributos anidados pasan a columnas a_* para poder agrupar con pandas.
     spans = pd.DataFrame(_leer_jsonl(logs_dir / "trazas.jsonl"))
     if not spans.empty:
         attrs = pd.json_normalize(spans["atributos"].tolist()).add_prefix("a_")
@@ -59,6 +60,7 @@ def ejecuciones_evaluables(res: pd.DataFrame) -> pd.DataFrame:
 def precision_seguridad(res: pd.DataFrame) -> dict:
     """% de ejecuciones con restricciones alimentarias sin ningún plato inseguro pedido ni recomendado."""
     ev = ejecuciones_evaluables(res)
+    # Solo cuentan los escenarios con restricciones alimentarias: ahí una recomendación insegura es una violación.
     ev = ev[ev["tiene_restricciones"]] if not ev.empty else ev
     n = len(ev)
     violaciones = int(ev["violacion_seguridad"].sum()) if n else 0
@@ -98,6 +100,7 @@ def consistencia(res: pd.DataFrame) -> pd.DataFrame:
     for (etiqueta, escenario), g in ev.groupby(["etiqueta", "escenario"]):
         if len(g) < 2:
             continue
+        # Jaccard entre pares de repeticiones = |A ∩ B| / |A ∪ B|  (1 = idénticas, 0 = sin nada en común).
         platos = [set(x) for x in g["platos_recomendados"]]
         herr = [set(x) for x in g["secuencia_herramientas"]]
         filas.append({"etiqueta": etiqueta, "escenario": escenario, "repeticiones": len(g),
@@ -122,6 +125,7 @@ def frecuencia_errores(res: pd.DataFrame, spans: pd.DataFrame) -> dict:
 # ---------------------------------------------------------------- IE2: latencia y recursos
 def turnos(spans: pd.DataFrame, completos: bool = False) -> pd.DataFrame:
     """Spans de turno. completos=True descarta los que terminaron con error (no son latencias representativas)."""
+    # Un turno es el span raíz de cada traza: su duración es la latencia que percibe el cliente.
     t = spans[spans["tipo"] == "turno"].copy() if not spans.empty else spans
     return t[t["estado"] != "error"] if completos and not t.empty else t
 
@@ -147,6 +151,8 @@ def desglose_tiempo(spans: pd.DataFrame, por: str = "escenario") -> pd.DataFrame
         espera = float(llm["a_espera_limitador_s"].sum()) if "a_espera_limitador_s" in llm else 0.0
         herr = float(s[s["tipo"] == "herramienta"]["duracion_s"].sum())
         rec = float(s[s["tipo"] == "recuperacion"]["duracion_s"].sum())
+        # 'otros' = lo que queda del turno al descontar modelo, espera, herramientas y recuperación
+        # (planificación, memoria y orquestación).
         otros = max(float(turno["duracion_s"]) - modelo - espera - herr - rec, 0.0)
         filas.append({por: turno[por], "etiqueta": turno["etiqueta"], "modelo": modelo, "espera_limitador": espera,
                       "herramientas": herr, "recuperacion": rec, "otros": otros, "total": float(turno["duracion_s"])})
@@ -168,6 +174,7 @@ def uso_recursos(spans: pd.DataFrame) -> dict:
     if tk.empty:
         return {}
     total = float(tk["tokens_total"].sum())
+    # pct_cuota_diaria = tokens usados / límite diario del plan gratuito de Groq.
     return {"tokens_total": total, "tokens_por_turno": float(tk["tokens_total"].mean()),
             "llamadas_llm_por_turno": float(tk["a_n_llm"].mean()),
             "pct_razonamiento_en_salida": float(tk["a_tokens_razonamiento"].sum() / tk["a_tokens_salida"].sum())
@@ -209,6 +216,7 @@ def causa_dominante(desglose: pd.DataFrame) -> str:
 def arbol_traza(spans: pd.DataFrame, trace_id: str) -> pd.DataFrame:
     """Spans de un turno ordenados como árbol, con profundidad, para el explorador de trazas."""
     s = spans[spans["trace_id"] == trace_id].copy()
+    # Profundidad de un span = cuántos padres tiene hasta llegar al turno; el dashboard la usa para sangrar el árbol.
     padres = dict(zip(s["span_id"], s["parent_span_id"]))
 
     def profundidad(sid):

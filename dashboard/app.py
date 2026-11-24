@@ -58,6 +58,7 @@ with st.sidebar:
     logs_dir = st.text_input("Carpeta de logs", str(Path(__file__).resolve().parents[1] / "logs"))
     if st.button("Recargar"):
         st.rerun()
+# Sin caché: cada recarga vuelve a leer logs/, por eso una corrida nueva aparece al pulsar Recargar.
 spans, resultados = m.cargar(logs_dir)
 if resultados.empty and spans.empty:
     st.warning("No hay logs en esa carpeta. Ejecuta `python scripts/ejecutar_escenarios.py` y recarga.")
@@ -69,6 +70,7 @@ with st.sidebar:
     st.header("Filtros")
     sel_etiquetas = st.multiselect("Corrida", etiquetas_disp, default=etiquetas_disp)
     sel_escenarios = st.multiselect("Escenario", escenarios_disp, default=escenarios_disp)
+# Todo lo que sigue usa solo las corridas y escenarios marcados en la barra lateral.
 res = m.filtrar(resultados, sel_etiquetas, sel_escenarios)
 sp = m.filtrar(spans, sel_etiquetas, sel_escenarios)
 if res.empty:

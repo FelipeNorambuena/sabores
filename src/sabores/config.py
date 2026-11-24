@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from .observabilidad import LimitadorMedido
 from .observabilidad.trazador import crear_cliente_http
 
+# Lee .env (local) o las variables ya definidas (Secretos de Colab). Aquí se eligen proveedor, modelos y perfil.
 load_dotenv()
 # Gemini 3 ignora la temperatura y lo avisa en cada llamada; el aviso no aporta a la demo
 warnings.filterwarnings("ignore", message=".*fixed sampling defaults.*")
@@ -50,6 +51,7 @@ class Config:
         return self.perfil == "optimizado"
 
 
+# Un limitador por valor de llamadas/minuto, compartido por planificador y ejecutor: se respeta una sola cuota.
 _limitadores: dict[float, LimitadorMedido] = {}
 
 
@@ -62,6 +64,7 @@ def limitador(cfg: Config) -> InMemoryRateLimiter:
 
 
 def crear_llm(modelo: str, cfg: Config, temperatura: float = 0.1):
+    # Gemini directo, o cualquier API compatible con OpenAI (Groq) según LLM_PROVEEDOR.
     if cfg.proveedor == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -73,6 +76,7 @@ def crear_llm(modelo: str, cfg: Config, temperatura: float = 0.1):
     if cfg.optimizado and "gpt-oss" in modelo:
         # El 59 a 73% de los tokens de salida del baseline era razonamiento interno: se baja el esfuerzo
         extra["reasoning_effort"] = "low"
+    # http_client = cliente httpx con el gancho que cuenta los reintentos 429 (observabilidad).
     return ChatOpenAI(model=modelo, temperature=temperatura, api_key=os.getenv("LLM_API_KEY"),
                       base_url=os.getenv("LLM_BASE_URL"), rate_limiter=limitador(cfg), max_retries=6,
                       http_client=crear_cliente_http(), **extra)

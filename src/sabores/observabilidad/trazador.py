@@ -36,6 +36,7 @@ _PATRONES_PII = [
 
 def enmascarar(texto, maximo: int = 400) -> str:
     texto = str(texto)
+    # Privacidad: los datos personales se reemplazan por marcas antes de escribir al log, y se recorta el largo.
     for patron, reemplazo in _PATRONES_PII:
         texto = patron.sub(reemplazo, texto)
     return texto if len(texto) <= maximo else texto[:maximo] + "…"
@@ -47,6 +48,8 @@ INTENTOS_HTTP: list[dict] = []
 
 
 def hook_respuesta_http(respuesta) -> None:
+    # Se guarda cada respuesta HTTP del proveedor, incluidos los 429 que el cliente de OpenAI reintenta por dentro
+    # y que LangChain no ve.
     intento = {"status": respuesta.status_code, "retry_after_s": respuesta.headers.get("retry-after"),
                "tokens_restantes": respuesta.headers.get("x-ratelimit-remaining-tokens")}
     if respuesta.status_code >= 400:
@@ -71,6 +74,7 @@ class LimitadorMedido(InMemoryRateLimiter):
     espera_total_s: float = 0.0
 
     def acquire(self, *, blocking: bool = True) -> bool:
+        # Cronometra cuánto bloquea el limitador: es espera propia, no latencia del modelo.
         t0 = time.perf_counter()
         try:
             return super().acquire(blocking=blocking)
@@ -78,6 +82,8 @@ class LimitadorMedido(InMemoryRateLimiter):
             self.espera_total_s += time.perf_counter() - t0
 
 
+# Un span = una unidad de trabajo medida (turno, paso, llamada al modelo o herramienta).
+# parent_id arma el árbol de la traza.
 @dataclass
 class Span:
     span_id: str
@@ -107,6 +113,7 @@ class Trazador:
 
     # --- ciclo de vida de spans ---
     def _abrir(self, tipo: str, nombre: str, **attrs) -> Span:
+        # El padre es el span abierto más reciente (pila): así queda el árbol turno > paso > llamada.
         padre = self._pila[-1].span_id if self._pila else None
         return Span(uuid.uuid4().hex[:12], padre, tipo, nombre, time.perf_counter(),
                     datetime.now().isoformat(timespec="milliseconds"), dict(attrs))
@@ -116,6 +123,7 @@ class Trazador:
               "parent_span_id": span.parent_id, "cliente": self.cliente, "tipo": span.tipo, "nombre": span.nombre,
               "inicio": span.inicio, "duracion_s": round(time.perf_counter() - span.t0, 4), "estado": estado,
               "error": enmascarar(error) if error else None, "atributos": span.attrs}
+        # Cada span cerrado se guarda en memoria y se escribe como una línea de JSON en logs/trazas.jsonl.
         with self._lock:
             self.eventos.append(ev)
             if self.ruta:
@@ -127,7 +135,9 @@ class Trazador:
     @contextmanager
     def turno(self, mensaje: str):
         """Raíz de la traza: un turno completo. Acumula tokens, llamadas y alertas de todos sus spans."""
+        # Cada turno nuevo recibe su trace_id; todos sus spans lo comparten y así se reconstruye el turno completo.
         self.trace_id = uuid.uuid4().hex[:16]
+        # Acumuladores del turno: al cerrar se copian al span raíz. De ahí salen los tokens por turno, reintentos y alertas.
         self._acum = {"n_llm": 0, "n_herramientas": 0, "n_alertas": 0, "tokens_entrada": 0, "tokens_salida": 0,
                       "tokens_razonamiento": 0, "espera_limitador_s": 0.0, "n_eventos_replanificacion": 0, "n_reintentos": 0}
         span = self._abrir("turno", "turno", mensaje=self._texto(mensaje))
@@ -189,6 +199,7 @@ class ManejadorCallbacks(BaseCallbackHandler):
     def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
         modelo = (kwargs.get("invocation_params") or {}).get("model") or (kwargs.get("invocation_params") or {}).get(
             "model_name") or "desconocido"
+        # Se abre el span al empezar la llamada al modelo; los intentos HTTP se limpian para atribuirle solo los suyos.
         span = self.t._abrir("llm", "llm", modelo=modelo, mensajes_entrada=sum(len(m) for m in messages))
         INTENTOS_HTTP.clear()
         self.t._abiertos[run_id] = (span, self.t._espera_actual())
@@ -197,11 +208,13 @@ class ManejadorCallbacks(BaseCallbackHandler):
         span, espera0 = self.t._abiertos.pop(run_id, (None, 0.0))
         if span is None:
             return
+        # Tokens reales que reporta el proveedor: entrada, salida y razonamiento interno.
         uso = {}
         try:
             uso = response.generations[0][0].message.usage_metadata or {}
         except (AttributeError, IndexError):
             pass
+        # Latencia total = espera del limitador (propia) + tiempo del modelo. Separarlas evita culpar al modelo de una espera nuestra.
         espera = round(self.t._espera_actual() - espera0, 4)
         total = time.perf_counter() - span.t0
         detalle = uso.get("output_token_details") or {}
@@ -234,6 +247,7 @@ class ManejadorCallbacks(BaseCallbackHandler):
         INTENTOS_HTTP.clear()
         if not intentos:
             return
+        # Un intento HTTP con código >= 400 (típicamente 429 por límite de tokens) cuenta como reintento.
         reintentos = [i for i in intentos if i["status"] >= 400]
         span.attrs["intentos_http"] = len(intentos)
         span.attrs["reintentos"] = len(reintentos)
@@ -253,6 +267,7 @@ class ManejadorCallbacks(BaseCallbackHandler):
         if span is None:
             return
         texto = str(getattr(output, "content", output))
+        # La etiqueta (OK, AGOTADO, DERIVADO...) es el prefijo del resultado; si es de alerta, el span queda marcado 'alerta'.
         etiqueta = texto.split(":", 1)[0].strip()
         span.attrs["etiqueta"] = etiqueta
         span.attrs["resultado"] = self.t._texto(texto)

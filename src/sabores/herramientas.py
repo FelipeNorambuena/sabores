@@ -21,18 +21,22 @@ Alergeno = Literal["gluten", "lactosa", "frutos_secos", "pescado", "mariscos", "
 Dieta = Literal["vegano", "vegetariano", "sin_gluten", "sin_lactosa", "sin_frutos_secos"]
 
 
+# Formato de todo resultado de herramienta: 'ETIQUETA: {json}'. La etiqueta es lo que lee el orquestador.
 def _json(etiqueta: str, **datos) -> str:
     return f"{etiqueta}: " + json.dumps(datos, ensure_ascii=False)
 
 
 def es_seguro(plato: dict, alergenos: list[str], dietas: list[str], alergia_severa: bool) -> tuple[bool, str]:
     """Regla dura de seguridad: se aplica en código, nunca se delega al criterio del LLM."""
+    # 1) Alérgeno presente en el plato.
     presentes = set(plato["alergenos"]) & set(alergenos)
     if presentes:
         return False, f"contiene {', '.join(sorted(presentes))}"
+    # 2) Dieta no cubierta (p. ej. el cliente es vegano y el plato no es apto).
     faltantes = set(dietas) - set(plato["apto_para"])
     if faltantes:
         return False, f"no es apto para {', '.join(sorted(faltantes))}"
+    # 3) Contaminación cruzada: solo se rechaza el plato si la alergia es severa.
     cruzada = set(plato["contaminacion_cruzada"]) & set(alergenos)
     if cruzada and alergia_severa:
         return False, f"riesgo de contaminación cruzada con {', '.join(sorted(cruzada))}"
@@ -52,6 +56,8 @@ def crear_herramientas(db: BaseDatos, memoria: MemoriaLargoPlazo, cliente: str, 
     def buscar_platos(consulta: str) -> str:
         """Búsqueda semántica en la carta (RAG). Úsala para encontrar platos por gusto o tipo de comida.
         OJO: no filtra alérgenos; después aplica filtrar_platos_seguros."""
+        # Perfil optimizado: la búsqueda ya excluye los platos inseguros para este cliente. La seguridad queda en código
+        # y no depende de que el modelo encadene buscar y luego filtrar.
         perfil = db.perfil(cliente) if perfil_en_busqueda else None
         filtrar = bool(perfil and (perfil["alergenos"] or perfil["dietas"]))
         docs = memoria.buscar_platos(consulta, k=k * 4 if filtrar else k)   # se busca de más: algunos se descartarán
@@ -135,6 +141,7 @@ def crear_herramientas(db: BaseDatos, memoria: MemoriaLargoPlazo, cliente: str, 
             return _json("ERROR", detalle="El pedido no tiene platos.")
         if modalidad == "delivery" and len(direccion.strip()) < 5:
             return _json("ERROR", detalle="Falta la dirección de despacho; pídesela al cliente.")
+        # Defensa en profundidad: crear_pedido vuelve a validar seguridad y stock aunque el modelo ya lo hubiera hecho.
         validacion = validar_pedido.invoke({"platos": platos})
         if validacion.startswith("RECHAZADO"):
             return validacion
@@ -143,6 +150,7 @@ def crear_herramientas(db: BaseDatos, memoria: MemoriaLargoPlazo, cliente: str, 
             return disponibilidad
         nombres = [db.buscar_plato(n)["nombre"] for n in platos]
         perfil = db.perfil(cliente)
+        # Alergia severa: el pedido no se confirma solo; queda pendiente y se deriva al personal.
         estado = "pendiente_confirmacion" if perfil["alergia_severa"] else "confirmado"
         pedido_id = db.crear_pedido(cliente, nombres, modalidad, direccion.strip() or None, estado)
         memoria.recordar(f"Pidió {', '.join(nombres)} ({modalidad})", cliente=cliente, tipo="pedido")
@@ -168,6 +176,7 @@ def crear_herramientas(db: BaseDatos, memoria: MemoriaLargoPlazo, cliente: str, 
         caso = db.derivar(cliente, motivo, detalle)
         return _json("DERIVADO", caso_personal=caso, detalle="Un integrante del equipo contactará al cliente.")
 
+    # Las 10 herramientas que ve el modelo (en el perfil optimizado, en cada paso solo ve la que corresponde).
     return [buscar_platos, consultar_plato, filtrar_platos_seguros, consultar_disponibilidad,
             guardar_perfil_alimentario, recordar_preferencia, validar_pedido, crear_pedido,
             consultar_pedido, derivar_a_personal]

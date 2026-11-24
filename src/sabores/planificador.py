@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 from .ejecutor import texto_de
 
 
+# Un paso del plan, validado con pydantic: si el JSON del modelo no calza con este formato, se descarta.
 class Paso(BaseModel):
     id: int
     descripcion: str
@@ -120,6 +121,8 @@ class Planificador:
         self.optimizado = optimizado
 
     def _invocar_plan(self, prompt: str, objetivo_defecto: str) -> Plan:
+        # El modelo responde JSON en texto libre: se extrae y valida. Ante cualquier fallo hay un plan mínimo de respaldo,
+        # así un JSON mal formado nunca rompe el turno.
         texto = self.llm.invoke(prompt).content
         try:
             plan = Plan.model_validate(extraer_json(texto))
@@ -139,15 +142,18 @@ class Planificador:
                 return decision
         except ValueError:
             pass
+        # Si el router falla se asume 'plan': es el camino más seguro (verifica seguridad y stock).
         return {"modo": "plan", "motivo": "respaldo: no se pudo clasificar"}
 
     def crear_plan(self, mensaje: str, contexto: str) -> Plan:
         prompt = PROMPT_PLAN.format(herramientas=", ".join(self.herramientas), contexto=contexto, mensaje=mensaje)
         plan = self._invocar_plan(prompt + (PROMPT_PLAN_EXTRA_OPT if self.optimizado else ""), mensaje)
+        # Orden por dependencias y prioridad: los pasos de seguridad (prioridad 1) van antes de recomendar o pedir.
         plan.pasos = ordenar_pasos(plan.pasos)
         return plan
 
     def replanificar(self, objetivo: str, completados: list[dict], pendientes: list[Paso], condicion: str) -> list[Paso]:
+        # Los pasos nuevos usan ids mayores a los existentes para no chocar con los que ya se ejecutaron.
         max_id = max([c["paso"]["id"] for c in completados] + [p.id for p in pendientes] + [0])
         prompt = (PROMPT_REPLAN_OPT if self.optimizado else PROMPT_REPLAN).format(
             objetivo=objetivo, condicion=condicion, max_id=max_id,

@@ -72,6 +72,8 @@ class AgenteSabores:
         self.traza: list[dict] = []
         # Observabilidad: el callback registra cada llamada al LLM y a herramientas como un span
         self.trazador = trazador or Trazador(sesion=sesion, cliente=cliente)
+        # Engancha los callbacks de LangChain a ambos modelos y a todas las herramientas: cada llamada se registra
+        # como span sin modificar el código de las herramientas.
         self.trazador.instrumentar(llm_planificador, llm_ejecutor, *herramientas)
 
     # --- contexto: memoria de largo plazo + resumen de corto plazo ---
@@ -97,6 +99,7 @@ class AgenteSabores:
 
     # --- ciclo principal ---
     def responder(self, mensaje: str) -> str:
+        # Un turno = una traza (trace_id). Todo lo que ocurra dentro cuelga de ella como spans medidos.
         with self.trazador.turno(mensaje) as turno:
             respuesta = self._responder(mensaje)
             eventos = [e["evento"] for e in self.traza]
@@ -107,11 +110,14 @@ class AgenteSabores:
 
     def _responder(self, mensaje: str) -> str:
         self.traza = []
+        # 0) Contexto del cliente: perfil guardado + recuerdos semánticos (FAISS) + resumen de lo hablado antes.
         contexto = self.contexto(mensaje)
         self._registrar("contexto", contexto=contexto)
+        # Prompt de sistema del turno: reglas fijas + contexto. El perfil optimizado agrega la regla de no sustituir pedidos.
         sistema = PROMPT_SISTEMA.format(contexto=contexto) + (REGLA_SUSTITUCION if self.cfg.optimizado else "")
         historial = self.corto.mensajes()
 
+        # 1) Router: ¿basta una respuesta directa (0 o 1 herramienta) o hay que armar un plan de varias etapas?
         decision = self.planificador.decidir_modo(mensaje)
         self._registrar("modo", **decision)
         if decision["modo"] == "directo":
@@ -121,11 +127,13 @@ class AgenteSabores:
         else:
             completados = self._ejecutar_plan(mensaje, sistema, contexto, historial)
 
+        # 3) Se juntan los resultados de todos los pasos: la respuesta final solo puede apoyarse en ellos (no inventar).
         resultados = "\n".join(f"- Paso {c['paso']['id']} ({c['paso']['descripcion']}): {c['salida']} "
                                f"| observaciones: {c['observaciones']}" for c in completados)
         prompt_respuesta = PROMPT_RESPUESTA.format(mensaje=mensaje, resultados=resultados)
         respuesta = texto_de(self.llm.invoke([SystemMessage(sistema), *historial, HumanMessage(
             prompt_respuesta + (REGLA_RESPUESTA if self.cfg.optimizado else ""))]).content)
+        # 4) Se guarda el turno en la memoria de corto plazo y la traza del turno para auditoría.
         self.corto.guardar_turno(mensaje, respuesta)
         self._registrar("respuesta", texto=respuesta)
         self._guardar_traza(mensaje)
@@ -136,8 +144,11 @@ class AgenteSabores:
         self._registrar("plan", objetivo=plan.objetivo, pasos=[p.model_dump() for p in plan.pasos])
         pendientes, completados, replanificaciones = list(plan.pasos), [], 0
         consultadas: set[str] = set()   # herramientas de lectura ya usadas desde la última condición nueva
+        # Bucle Plan-and-Execute: toma el siguiente paso pendiente; si una herramienta informa una condición nueva,
+        # se replanifica los pasos que faltan.
         while pendientes:
             paso = pendientes.pop(0)
+            # Optimización: no repetir una consulta de solo lectura si nada cambió desde la última (ahorra tokens y cuota).
             if self.cfg.optimizado and paso.herramienta in HERRAMIENTAS_LECTURA and paso.herramienta in consultadas:
                 self._registrar("paso_omitido", paso=paso.id, herramienta=paso.herramienta)
                 completados.append({"paso": paso.model_dump(), "salida": "Omitido: ya se consultó en este turno.",
@@ -152,6 +163,8 @@ class AgenteSabores:
             res = self._ejecutar_paso(paso, sistema, [*historial, HumanMessage(instruccion)])
             completados.append(self._resultado(paso, res))
             consultadas |= {ll["herramienta"] for ll in res.llamadas if ll["herramienta"] in HERRAMIENTAS_LECTURA}
+            # ¿Alguna herramienta devolvió ERROR, AGOTADO, RECHAZADO o DERIVADO? Esa etiqueta (y no el criterio del modelo)
+            # decide si hay que replanificar.
             condicion = res.condicion()
             if condicion is None:
                 continue
@@ -159,6 +172,7 @@ class AgenteSabores:
                 # Protocolo de derivación: el caso pasa a una persona y el agente no sigue actuando solo
                 self._registrar("fin_por_derivacion", condicion=condicion)
                 break
+            # Tope de replanificaciones: evita bucles infinitos; si se agota, el caso pasa a una persona.
             if replanificaciones >= self.cfg.max_replanificaciones:
                 caso = self.db.derivar(self.cliente, "informacion_insuficiente",
                                        f"Límite de replanificación alcanzado. Última condición: {condicion}")
@@ -174,6 +188,7 @@ class AgenteSabores:
         return completados
 
     def _ejecutar_paso(self, paso: Paso, sistema: str, mensajes) -> ResultadoPaso:
+        # Cada paso es un span: queda medido (duración, tokens, herramientas usadas) en logs/trazas.jsonl.
         with self.trazador.span("paso", f"paso_{paso.id}", descripcion=paso.descripcion[:120],
                                 herramienta_sugerida=paso.herramienta) as sp:
             # Perfil optimizado: el modelo solo ve la herramienta del paso (+ derivar): ~1.000 tokens menos por llamada
