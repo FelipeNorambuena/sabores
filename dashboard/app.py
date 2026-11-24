@@ -91,9 +91,9 @@ tab_resumen, tab_lat, tab_cal, tab_conv, tab_err, tab_datos = st.tabs(
 with tab_resumen:
     c = st.columns(5)
     # El detalle va en la leyenda, no como "delta": st.metric dibuja una flecha que sugeriría una variación.
-    c[0].metric("Precisión de seguridad", f"{seg['valor']:.0%}")
+    c[0].metric("Precisión de seguridad", "—" if pd.isna(seg["valor"]) else f"{seg['valor']:.0%}")
     c[0].caption(f"{semaforo(seg['valor'], *UMBRALES['seguridad'])} · {seg['violaciones']} violaciones en {seg['ejecuciones']} ejecuciones")
-    c[1].metric("Cumplimiento de checks", f"{cumpl['valor']:.0%}")
+    c[1].metric("Cumplimiento de checks", "—" if pd.isna(cumpl["valor"]) else f"{cumpl['valor']:.0%}")   # sin checks (petición libre): sin dato
     c[1].caption(f"{semaforo(cumpl['valor'], *UMBRALES['cumplimiento'])} · {cumpl['cumplidos']} de {cumpl['checks']} checks")
     cm = cons["jaccard_platos"].mean() if not cons.empty else float("nan")
     c[2].metric("Consistencia (platos)", "—" if pd.isna(cm) else f"{cm:.2f}")
