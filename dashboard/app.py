@@ -3,6 +3,7 @@
 Ejecutar:  streamlit run dashboard/app.py
 Lee logs/trazas.jsonl y logs/resultados.jsonl, que generan el agente y scripts/ejecutar_escenarios.py.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -55,7 +56,8 @@ st.caption("EV3 · ISY0101 · métricas, trazas y logs del agente de recomendaci
 
 with st.sidebar:
     st.header("Datos")
-    logs_dir = st.text_input("Carpeta de logs", str(Path(__file__).resolve().parents[1] / "logs"))
+    # SABORES_LOGS_DIR permite abrir un segundo dashboard sobre otra carpeta (p. ej. una demo limpia)
+    logs_dir = st.text_input("Carpeta de logs", os.getenv("SABORES_LOGS_DIR") or str(Path(__file__).resolve().parents[1] / "logs"))
     if st.button("Recargar"):
         st.rerun()
 # Sin caché: cada recarga vuelve a leer logs/, por eso una corrida nueva aparece al pulsar Recargar.

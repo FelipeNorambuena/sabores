@@ -47,3 +47,22 @@ def responder_con_reintentos(agente, mensaje: str, max_intentos: int = 4, espera
             else:
                 raise
     raise RuntimeError("Se agotaron los reintentos. Espera 1-2 minutos y vuelve a ejecutar la celda.")
+
+def peticion_en_vivo(mensajes, restricciones=None, logs_dir="/content/logs_demo", etiqueta="demo-en-vivo", fabrica=None):
+    """Ejecuta una petición libre con el mismo mecanismo de medición de los escenarios y la deja en `logs_dir`.
+
+    Así el dashboard (con SABORES_LOGS_DIR=logs_dir) la muestra completa: trazas, tokens, latencia y seguridad.
+    `restricciones` es la verdad del cliente, p. ej. {"alergenos": ["gluten"], "dietas": ["sin_gluten"]}: con ella
+    se calcula la violación de seguridad con la regla en código. Sin restricciones, solo se miden tiempos y tokens.
+    """
+    from pathlib import Path
+
+    from .evaluacion import Escenario, ejecutar_corrida
+
+    if isinstance(mensajes, str):
+        mensajes = [mensajes]
+    esc = Escenario("peticion_libre", "Petición escrita en vivo durante la demostración", list(mensajes),
+                    restricciones=restricciones or {})
+    res = ejecutar_corrida(etiqueta, [esc], Path(logs_dir), fabrica=fabrica, repeticiones=1)[0]
+    print("\n💬 RESPUESTA AL CLIENTE:\n" + "\n\n".join(res["respuestas"]))
+    return res
