@@ -53,6 +53,48 @@ Se abre solo en el navegador; si no, copia <http://localhost:8501>. La primera i
 
 ---
 
+## Ejecutarlo en Google Colab (sin instalar nada)
+
+Abre el cuaderno [`notebooks/Sabores_EV3.ipynb`](notebooks/Sabores_EV3.ipynb) en Colab:
+<https://colab.research.google.com/github/FelipeNorambuena/sabores/blob/main/notebooks/Sabores_EV3.ipynb>
+
+Colab avisa que el cuaderno "no lo ha creado Google": es normal, el código es el de este repositorio. Ejecuta las celdas **en orden**
+(botón de reproducir o `Shift+Enter`).
+
+| Celda | Qué hace | Claves | Tiempo aprox. |
+|---|---|---|---|
+| 1. Instalar | Clona el repositorio (o lo actualiza) e instala las librerías | No | 1 a 2 min la primera vez |
+| 2. Dashboard | Abre el dashboard dentro del cuaderno, con las corridas ya guardadas en `logs/` | No | 10 s |
+| 3. Un escenario | Ejecuta `injection_directa` con el agente real y deja la corrida `demo-colab` | Sí | 15 a 60 s |
+| 4. Petición en vivo | Ejecuta una petición escrita por ti y la mide | Sí (las de la celda 3) | 30 a 60 s |
+| 5. Segundo dashboard | Abre otro dashboard, solo con tus peticiones de la celda 4 | No | 10 s |
+
+**Las celdas 1 y 2 bastan para ver los resultados**, sin claves ni consumo de cuota. Las celdas 3 a 5 llaman al modelo.
+
+### Claves para las celdas 3 y 4
+1. En Colab, abre **Secretos** (el ícono de la llave, a la izquierda).
+2. Crea dos secretos: `LLM_API_KEY` (clave de Groq, empieza con `gsk_`) y `GOOGLE_API_KEY` (clave de Google, para los embeddings).
+3. Activa el interruptor **Acceso desde el cuaderno** de cada uno. Si no, la celda 3 falla con "Falta el secreto".
+
+La celda 3 también acepta el nombre `GROQ_API_KEY` en lugar de `LLM_API_KEY`. **Nunca pegues las claves dentro del cuaderno ni las subas al repositorio.**
+
+### Petición en vivo (celdas 4 y 5)
+- En la celda 4 cambia `pregunta` y `restricciones` (lo que el cliente realmente tiene: alérgenos y dietas; con ellas se mide si el agente
+  recomendó algo inseguro). Déjalo como `{}` si no aplica.
+- Cada petición queda en `/content/logs_demo`, separada de las corridas del informe, con el nombre `demo-HHMMSS`.
+- En el segundo dashboard pulsa **Recargar** después de cada petición nueva y deja marcada **una sola** corrida.
+- Ejecuta la celda 5 **después** de la 4, para que la carpeta ya exista.
+
+### Cosas que conviene saber
+- **Cuota:** cada petición gasta unos 8.000 a 14.000 tokens de los 200.000 diarios de Groq por modelo. Compartir la clave con otras personas comparte la cuota.
+- **Se pierde al cerrar:** `logs/` y `logs_demo` viven en el disco temporal de Colab. Si quieres conservar una corrida, descárgala antes de cerrar la sesión.
+- **No es evidencia del informe:** las corridas nuevas de Colab pueden dar cifras distintas a las del informe. No las mezcles sin decirlo.
+- **Aviso de `langchain-openai` sobre `http_socket_options`:** aparece en las celdas 3 y 4. Es informativo y no afecta el resultado.
+- **Si el dashboard no se ve dentro del cuaderno:** en la celda 2 hay una línea comentada, `serve_kernel_port_as_window`, que lo abre en otra pestaña.
+- **Si algo falla tras actualizar el repositorio:** `Entorno de ejecución > Desconectar y eliminar el entorno de ejecución` y vuelve a ejecutar desde la celda 1.
+
+---
+
 ## Resultados de la corrida de referencia
 
 Corrida `baseline-20b`: los 8 escenarios (10 ejecuciones) con el modelo `gpt-oss-20b` de Groq, sin cambios en el agente.
